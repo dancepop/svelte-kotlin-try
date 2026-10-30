@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+// Owned by the Media team.
+package media;
+
+import "google/protobuf/empty.proto";
+
+option java_multiple_files = true;
+option java_package = "com.backend.media.api";
+
+service MediaService {
+  // The first message is the movie id, then the chunks of the file, then `complete`.
+  // A stream that ends without `complete` was interrupted, so nothing is stored.
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+  // The first message is the file's info; every later one is a chunk of it.
+  rpc ReadFile(ReadFileRequest) returns (stream ReadFileResponse);
+  // Deleting something that's already gone succeeds.
+  rpc DeleteMovieFiles(DeleteMovieFilesRequest) returns (google.protobuf.Empty);
+}
+
+message UploadFileRequest {
+  oneof payload {
+    string movie_id = 1;
+    bytes chunk = 2;
+    bool complete = 3;
+  }
+}
+
+message UploadFileResponse {
+  string storage_key = 1;
+}
+
+message ReadFileRequest {
+  string storage_key = 1;
+}
+
+message FileInfo {
+  int64 total_size = 1;
+}
+
+message ReadFileResponse {
+  oneof payload {
+    FileInfo info = 1;
+    bytes chunk = 2;
+  }
+}
+
+message DeleteMovieFilesRequest {
+  string movie_id = 1;
+}

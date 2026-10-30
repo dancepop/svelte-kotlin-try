@@ -3,54 +3,41 @@ package com.backend.media.storage
 import com.backend.media.exception.NotFoundException
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
-import java.nio.channels.SeekableByteChannel
+import java.nio.channels.ReadableByteChannel
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.util.UUID
 
-private const val TEMP_FOLDER = "tmp"
-
 /**
- * The only code that touches the disk. Every file lives under [root], which is the media-data volume in compose.
- * A storage key is a file's path relative to the root, such as `{movieId}/artwork/{uuid}.jpg`.
+ * The only code that touches the disk. Every file lives under [root].
+ * A storage key is a file's path relative to the root, such as `{movieId}/{uuid}`.
  */
 @Component
 class FileStorage(@Value("\${media.storage.root}") root: String) {
 
     private val root: Path = Path.of(root).toAbsolutePath().normalize()
 
-    /** A path for a file still being uploaded. A half-written file never appears under a real key. */
-    fun newTempFile(): Path {
-        val folder = root.resolve(TEMP_FOLDER)
+    /** A path for a new upload. Every file gets a new uuid, so a key never changes content. */
+    fun newFile(movieId: UUID): Path {
+        val folder = root.resolve(movieId.toString())
         Files.createDirectories(folder)
         return folder.resolve(UUID.randomUUID().toString())
     }
 
-    /** Puts a finished upload in place and returns its key. Every file gets a new uuid, so a key never changes content. */
-    fun moveIntoPlace(tempFile: Path, movieId: UUID, folder: String, extension: String): String {
-        val target = root.resolve(movieId.toString()).resolve(folder).resolve("${UUID.randomUUID()}.$extension")
-        Files.createDirectories(target.parent)
-        // Temp files are on the same volume, so the move is atomic.
-        Files.move(tempFile, target, StandardCopyOption.ATOMIC_MOVE)
-        return root.relativize(target).toString()
-    }
+    fun keyOf(file: Path): String = root.relativize(file).toString()
 
-    fun deleteTempFile(tempFile: Path) {
-        Files.deleteIfExists(tempFile)
+    fun deleteUnfinishedFile(file: Path) {
+        Files.deleteIfExists(file)
     }
 
     fun size(storageKey: String): Long = Files.size(existingFile(storageKey))
 
-    /** Opens the file for reading, already at [offset]. The caller closes it. */
-    fun open(storageKey: String, offset: Long): SeekableByteChannel =
-        Files.newByteChannel(existingFile(storageKey)).position(offset)
+    /** Opens the file for reading. The caller closes it. */
+    fun open(storageKey: String): ReadableByteChannel = Files.newByteChannel(existingFile(storageKey))
 
-    /** Deleting a file that's already gone succeeds. A key that points at a folder is not found. */
+    /** Deleting a file that's already gone succeeds. */
     fun delete(storageKey: String) {
-        val path = resolve(storageKey)
-        if (Files.isDirectory(path)) throw NotFoundException("File not found")
-        Files.deleteIfExists(path)
+        Files.deleteIfExists(resolve(storageKey))
     }
 
     /** Grouping files by movie makes this one folder delete. Deleting a folder that's already gone succeeds. */
@@ -64,12 +51,10 @@ class FileStorage(@Value("\${media.storage.root}") root: String) {
         return path
     }
 
-    // Keys come from outside, so `..`, absolute paths and unfinished uploads must not reach the disk.
+    // Keys come from outside, so `..` and absolute paths must not reach the disk.
     private fun resolve(storageKey: String): Path {
         val path = root.resolve(storageKey).normalize()
-        if (!path.startsWith(root) || path.startsWith(root.resolve(TEMP_FOLDER))) {
-            throw NotFoundException("File not found")
-        }
+        if (!path.startsWith(root)) throw NotFoundException("File not found")
         return path
     }
 }

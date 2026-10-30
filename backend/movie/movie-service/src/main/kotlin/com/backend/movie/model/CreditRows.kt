@@ -1,7 +1,6 @@
 package com.backend.movie.model
 
 import com.backend.movie.enums.CreditType
-import com.backend.movie.enums.MovieStatus
 import java.util.UUID
 
 /** A credit joined with its person: a movie's cast and creators. */
@@ -17,6 +16,5 @@ data class PersonCreditRow(
     val personId: UUID,
     val movieId: UUID,
     val title: String,
-    val status: MovieStatus,
     val creditType: CreditType,
 )

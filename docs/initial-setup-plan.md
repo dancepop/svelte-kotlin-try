@@ -1,8 +1,6 @@
 # Initial Setup
 
-> **Status: done.** The walking skeleton works: `docker compose up --build` starts everything, and compose's healthchecks show both Kotlin services up.
-
-This document records how the project is set up and why. Movie, cast, artwork and video features come in the next phase (class and API design).
+This document records how the project is set up and why. Movie, cast and artwork features come in the next phase (class and API design).
 
 ---
 
@@ -13,13 +11,13 @@ This document records how the project is set up and why. Movie, cast, artwork an
 Browser → GraphQL → **Apollo Server + Express** (Node/TS) → gRPC → Kotlin services.
 
 - **gRPC is the backbone:** the Kotlin services only speak gRPC, so service-to-service communication is clearly gRPC.
-- **Custom HTTP routes:** video playback needs an HTTP endpoint with Range support (`<video src>`). Express serves it next to `/graphql`; Apollo Router can't host custom routes.
+- **Custom HTTP routes:** showing artwork needs a plain HTTP endpoint (`<img src>`). Express serves it next to `/graphql`; Apollo Router can't host custom routes.
 - **Uploads through the gateway:** multipart GraphQL uploads let the gateway stream files to media-service over **gRPC client streaming**. Router only supports uploads as a paid enterprise feature.
 
 ### Two services, layered inside
 
 - **movie-service** owns movies **and** cast/creators. People are attributes of a movie and are queried and edited together, so splitting them would turn joins into cross-service calls.
-- **media-service** owns media files (artwork and videos): uploads, storage and streaming. It has different scaling and storage needs (large files, long-lived streams).
+- **media-service** owns artwork files: uploads, storage and streaming. It has different scaling and storage needs from movie-service, because it handles files rather than rows.
 - Inside each `-service` module, code is layered by **package**: `controller/` (gRPC entry points) → `service/` (business logic) → `repository/` (database). Layering doesn't need Gradle modules; only the published contract is its own module.
 
 ### Each service owns its `.proto` (team ownership)
@@ -27,8 +25,7 @@ Browser → GraphQL → **Apollo Server + Express** (Node/TS) → gRPC → Kotli
 - Each service has an **`-api` module** holding its `.proto` files and generated stubs. This is the team's published contract.
 - Consumers depend on the `-api` module, never the `-service` module (e.g. `implementation(project(":movie:movie-api"))`).
 - `-api` modules apply `maven-publish`: `./gradlew :movie:movie-api:publishToMavenLocal` produces a jar with the `.proto` files inside, which is what a multi-repo company would push to a registry.
-- The gateway reads the `.proto` files directly from each `-api/src/main/proto` folder.
-- Packages are versioned (`movie.v1`, `media.v1`). A breaking change becomes a new `v2` package served alongside `v1`.
+- The gateway keeps its own copy of the `.proto` files in `gateway/proto`, which must be re-copied when a contract changes. With separate teams, it would install them as a versioned package instead.
 - **Why the contract isn't merged into the app module:** the published jar would then be the whole Spring Boot app. Also, when protobuf and Spring Boot share a module, Spring Boot 4.1's Gradle plugin auto-configures protobuf (`ProtobufPluginAction`), which clashes with our own `grpc` generator setup. Keeping `-api` free of Spring Boot avoids both problems.
 
 ---
@@ -37,9 +34,8 @@ Browser → GraphQL → **Apollo Server + Express** (Node/TS) → gRPC → Kotli
 
 ```
 svelte-kotlin-try/
-├── docker-compose.yml        ← starts everything
+├── docker-compose.yml        ← starts Postgres; everything else runs on the host
 ├── README.md                 ← setup, how to run, how AI was used
-├── .dockerignore             ← allow-list for the gateway image (repo-root build context)
 ├── docs/
 ├── frontend/                 ← SvelteKit + TypeScript
 ├── gateway/                  ← Apollo Server + Express (Node + TypeScript)
@@ -50,13 +46,11 @@ svelte-kotlin-try/
     ├── gradle/libs.versions.toml   ★ all versions in one place, shared by both services
     ├── gradle/wrapper/, gradlew      Gradle wrapper (Mac/Linux; no gradlew.bat)
     ├── movie/                        plain folder, no Gradle file
-    │   ├── Dockerfile
-    │   ├── movie-api/       ★ build.gradle.kts · src/main/proto/movie/v1/movie_service.proto
+    │   ├── movie-api/       ★ build.gradle.kts · src/main/proto/movie/movie_service.proto
     │   └── movie-service/   ★ build.gradle.kts · Spring Boot app, gRPC on :9091
     │       └── src/main/kotlin/com/backend/movie/{controller,service,repository}/
     └── media/                        plain folder, no Gradle file
-        ├── Dockerfile
-        ├── media-api/       ★ build.gradle.kts · src/main/proto/media/v1/media_service.proto
+        ├── media-api/       ★ build.gradle.kts · src/main/proto/media/media_service.proto
         └── media-service/   ★ build.gradle.kts · Spring Boot app, gRPC on :9092
 ```
 
@@ -110,7 +104,7 @@ svelte-kotlin-try/
 
 **Versions:** Spring Boot 4.1.2, Kotlin 2.3.21, Gradle 9.8.2, Java 25, protobuf Gradle plugin 0.10.0.
 
-- **Packages:** `com.backend.movie` / `com.backend.media`, matching the Gradle `group`. Generated stubs live in `com.backend.<service>.api.v1`.
+- **Packages:** `com.backend.movie` / `com.backend.media`, matching the Gradle `group`. Generated stubs live in `com.backend.<service>.api`.
 - **Java 25** is the current LTS and is supported by Spring Boot 4, Kotlin 2.3 and Gradle 9.8. The gains are at runtime: faster startup with the AOT cache, compact object headers, and virtual threads without `synchronized` pinning. Each module sets it with `kotlin { jvmToolchain(25) }`.
 - The **foojay toolchain resolver** (in settings) downloads JDK 25 if Gradle can't find one. Gradle doesn't detect jenv installs, so it uses its own copy in `~/.gradle/jdks`.
 - **`gradle.properties`** turns on parallel builds (the two services build at the same time) and the build cache.
@@ -121,7 +115,7 @@ svelte-kotlin-try/
   - `grpc`: Java stubs, which the Kotlin stubs build on;
   - `grpckt`: **coroutine** stubs, so service methods are `suspend fun`;
   - `kotlin` (built in): Kotlin DSL builders such as `movie { title = "Heat" }`.
-- **`-service` modules** are Spring Boot apps (`spring-boot-starter-grpc-server`). Each has one gRPC controller (`controller/`) extending the generated `...CoroutineImplBase`. Spring Boot also registers the standard `grpc.health.v1.Health` service automatically, which Docker uses as the health check.
+- **`-service` modules** are Spring Boot apps (`spring-boot-starter-grpc-server`). Each has one gRPC controller (`controller/`) extending the generated `...CoroutineImplBase`. Spring Boot also registers the standard `grpc.health.v1.Health` service automatically.
 - **Known warning:** `Configuration.setVisible(boolean) has been deprecated` comes from the protobuf plugin itself (`ProtobufPlugin.groovy`), even in 0.10.0. It is harmless until Gradle 11.
 
 ```bash
@@ -136,7 +130,7 @@ svelte-kotlin-try/
 ## 5. Gateway (`gateway/`)
 
 - **Stack:** Apollo Server 5 + `@as-integrations/express5`, Express 5, `graphql` **16** (Apollo Server 5 doesn't support 17 yet), `@grpc/grpc-js` + `@grpc/proto-loader`, TypeScript, Vitest.
-- `proto-loader` reads the `.proto` files at runtime from `backend/<service>/<service>-api/src/main/proto`, so there's no gRPC code-generation step. In Docker they're copied to `/app/proto/<service>`.
+- `proto-loader` reads the `.proto` files at runtime from `gateway/proto`, so there's no gRPC code-generation step.
 - **Files:**
   - `config.ts`: env vars;
   - `grpc/clients.ts`: loads protos and creates clients;
@@ -152,7 +146,7 @@ svelte-kotlin-try/
 - **SvelteKit 3 differs from older tutorials:**
   - config lives in `vite.config.ts`;
   - `$lib` is `#lib` (Node subpath imports), and imports include the extension: `#lib/api/graphql.ts`;
-  - env vars are declared in `src/env.ts` (`defineEnvVars`) and imported from `$app/env/public`. `GRAPHQL_URL` is read at server start, so one build works both locally and in Docker.
+  - env vars are declared in `src/env.ts` (`defineEnvVars`) and imported from `$app/env/public`. `GRAPHQL_URL` is read at server start.
 - **Tests:** Vitest unit tests in Node, plus component tests in headless Chromium via Playwright (run `npx playwright install chromium` once).
 - **GraphQL calls** use a small `fetch` helper for now. Uploads will use `XMLHttpRequest`, to get `upload.onprogress` events.
 
@@ -160,24 +154,9 @@ svelte-kotlin-try/
 
 ## 7. Docker (`docker-compose.yml`)
 
-| Service | Build context → Dockerfile | Host port |
-|---|---|---|
-| `postgres` | image `postgres:18`, volume `postgres-data` | none |
-| `movie-service` | `backend/` → `movie/Dockerfile` | none (internal gRPC) |
-| `media-service` | `backend/` → `media/Dockerfile` | none |
-| `gateway` | repo root → `gateway/Dockerfile` | `4000` |
-| `frontend` | `frontend/` → `frontend/Dockerfile` | `3000` |
+Docker only runs Postgres. The services, gateway and frontend run on the host.
 
-- **Startup order** uses `depends_on: condition: service_healthy`. The Kotlin images include `grpc_health_probe`, which calls the standard gRPC health service. The gateway is checked with `GET /healthz`, and Postgres with `pg_isready`.
-- **Build contexts:**
-  - The Kotlin services build from `backend/`, because `movie-service` needs its sibling `movie-api` from the same multi-project. Each runs `./gradlew :movie:movie-service:bootJar`, and a Gradle cache mount speeds up rebuilds.
-  - The gateway builds from the repo root because it needs the `.proto` files. The root `.dockerignore` is an allow-list, so only `gateway/` and the proto folders are sent.
-- **Java images:** Amazon Corretto 25 on Amazon Linux 2023, with `25-al2023-jdk` to build and `25-al2023-headless` (no GUI libraries) to run.
-  - The build stage installs `findutils`, because `gradlew` needs `xargs`.
-  - Alpine would save little (Corretto's Alpine image is a full JDK), and `protoc` needs glibc.
-- **Non-root:** every runtime image runs as a non-root user. Corretto uses numeric `1000:1000` because it has no `useradd`.
-- **Postgres 18** is the version we'd run on AWS RDS. Its credentials are local-only. movie-service connects to it.
-- **Frontend `GRAPHQL_URL`** is `http://localhost:4000/graphql`, because it's called from the user's browser rather than from inside the compose network.
+- **Postgres 18** is the version we'd run on AWS RDS. Its credentials are local-only. It's on host port `5433`, so it doesn't clash with another Postgres on `5432`.
 
 ---
 
@@ -185,6 +164,6 @@ svelte-kotlin-try/
 
 **Decisions for the design phase**
 
-- [x] Video/artwork storage: a local Docker volume on media-service (see `docs/database-design.md`).
-- [x] Artwork files go to media-service (renamed from video-service). movie-service keeps the records.
+- [x] Artwork storage: a local folder on media-service (see `docs/backend-design.md`).
+- [x] Artwork files go to media-service. movie-service keeps each movie's `artwork_key`.
 - [ ] Frontend GraphQL client: Apollo Client core or urql?

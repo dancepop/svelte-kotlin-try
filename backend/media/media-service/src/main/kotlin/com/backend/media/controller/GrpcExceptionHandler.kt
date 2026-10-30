@@ -2,7 +2,6 @@ package com.backend.media.controller
 
 import com.backend.media.exception.MovieServiceUnavailableException
 import com.backend.media.exception.NotFoundException
-import com.backend.media.exception.PublishedMovieException
 import com.backend.media.exception.ValidationException
 import io.grpc.Metadata
 import io.grpc.Status
@@ -15,7 +14,8 @@ import org.slf4j.LoggerFactory
 private val logger = LoggerFactory.getLogger("com.backend.media.controller.GrpcExceptionHandler")
 
 // Sent as "field=message", so the gateway can show the message next to its field.
-private val FIELD_ERROR_KEY = Metadata.Key.of("field-error", Metadata.ASCII_STRING_MARSHALLER)
+// Binary ("-bin") to match movie-service, whose handler explains why; the gateway reads both the same way.
+private val FIELD_ERROR_KEY = Metadata.Key.of("field-error-bin", Metadata.BINARY_BYTE_MARSHALLER)
 
 /**
  * Wraps controller methods. Runs blocking work on the coroutine pool meant for it, and turns exceptions into
@@ -34,11 +34,10 @@ internal suspend fun <T> rpc(block: suspend () -> T): T = try {
 internal fun toStatusException(e: Throwable): StatusException = when (e) {
     is ValidationException -> {
         val trailers = Metadata()
-        trailers.put(FIELD_ERROR_KEY, "${e.field}=${e.message}")
+        trailers.put(FIELD_ERROR_KEY, "${e.field}=${e.message}".toByteArray())
         StatusException(Status.INVALID_ARGUMENT.withDescription(e.message), trailers)
     }
     is NotFoundException -> StatusException(Status.NOT_FOUND.withDescription(e.message))
-    is PublishedMovieException -> StatusException(Status.FAILED_PRECONDITION.withDescription(e.message))
     is MovieServiceUnavailableException -> {
         logger.warn("Couldn't reach movie-service", e)
         StatusException(Status.UNAVAILABLE.withDescription("Something went wrong, try again"))

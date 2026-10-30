@@ -1,19 +1,15 @@
 package com.backend.media.client
 
-import com.backend.media.enums.MediaKind
 import com.backend.media.exception.MovieServiceUnavailableException
 import com.backend.media.exception.NotFoundException
-import com.backend.media.exception.PublishedMovieException
-import com.backend.media.exception.ValidationException
-import com.backend.movie.api.v1.MovieServiceGrpc
-import com.backend.movie.api.v1.attachMediaRequest
+import com.backend.movie.api.MovieServiceGrpc
+import com.backend.movie.api.attachArtworkRequest
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
 import org.springframework.grpc.client.GrpcChannelFactory
 import org.springframework.stereotype.Component
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import com.backend.movie.api.v1.MediaKind as ProtoMediaKind
 
 private const val DEADLINE_SECONDS = 5L
 
@@ -22,15 +18,8 @@ private const val DEADLINE_SECONDS = 5L
  * and tests can swap in a fake.
  */
 interface MovieClient {
-    /** Records a stored file on its movie. Returns the replaced file's key, or null if nothing was replaced. */
-    fun attachMedia(
-        movieId: UUID,
-        kind: MediaKind,
-        storageKey: String,
-        contentType: String,
-        sizeBytes: Long,
-        durationSeconds: Int?,
-    ): String?
+    /** Records stored artwork on its movie. Returns the replaced file's key, or null if nothing was replaced. */
+    fun attachArtwork(movieId: UUID, storageKey: String): String?
 }
 
 /** Uses the blocking stub, since it's called from ordinary (non-suspend) service functions. */
@@ -40,44 +29,20 @@ class GrpcMovieClient(channels: GrpcChannelFactory) : MovieClient {
     // "movie" is the channel's name; its address comes from spring.grpc.client.channel.movie.target.
     private val stub = MovieServiceGrpc.newBlockingStub(channels.createChannel("movie"))
 
-    override fun attachMedia(
-        movieId: UUID,
-        kind: MediaKind,
-        storageKey: String,
-        contentType: String,
-        sizeBytes: Long,
-        durationSeconds: Int?,
-    ): String? {
-        val request = attachMediaRequest {
+    override fun attachArtwork(movieId: UUID, storageKey: String): String? {
+        val request = attachArtworkRequest {
             this.movieId = movieId.toString()
-            this.kind = kind.toProto()
             this.storageKey = storageKey
-            this.contentType = contentType
-            this.sizeBytes = sizeBytes
-            durationSeconds?.let { this.durationSeconds = it }
         }
         try {
-            val response = stub.withDeadlineAfter(DEADLINE_SECONDS, TimeUnit.SECONDS).attachMedia(request)
+            val response = stub.withDeadlineAfter(DEADLINE_SECONDS, TimeUnit.SECONDS).attachArtwork(request)
             return if (response.hasReplacedStorageKey()) response.replacedStorageKey else null
         } catch (e: StatusRuntimeException) {
-            throw translate(e)
+            // An unknown movie keeps its message; anything else becomes "unavailable".
+            throw when (e.status.code) {
+                Status.Code.NOT_FOUND -> NotFoundException(e.status.description.orEmpty())
+                else -> MovieServiceUnavailableException(e)
+            }
         }
-    }
-
-    // Errors the user can act on keep their message; anything else becomes "unavailable".
-    private fun translate(e: StatusRuntimeException): Exception {
-        val message = e.status.description.orEmpty()
-        return when (e.status.code) {
-            Status.Code.INVALID_ARGUMENT -> ValidationException("file", message)
-            Status.Code.NOT_FOUND -> NotFoundException(message)
-            Status.Code.FAILED_PRECONDITION -> PublishedMovieException(message)
-            else -> MovieServiceUnavailableException(e)
-        }
-    }
-
-    private fun MediaKind.toProto(): ProtoMediaKind = when (this) {
-        MediaKind.ARTWORK -> ProtoMediaKind.ARTWORK
-        MediaKind.PREVIEW -> ProtoMediaKind.PREVIEW
-        MediaKind.FULL -> ProtoMediaKind.FULL
     }
 }

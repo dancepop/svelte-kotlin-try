@@ -32,7 +32,7 @@ interface CreditRepository : Repository<Credit, CreditId> {
 
     @Query(
         """
-        SELECT c.person_id, c.movie_id, m.title, m.status, c.credit_type
+        SELECT c.person_id, c.movie_id, m.title, c.credit_type
         FROM credits c JOIN movies m ON m.id = c.movie_id
         WHERE c.person_id IN (:personIds)
         ORDER BY m.title, m.id

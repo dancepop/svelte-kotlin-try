@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-// Owned by the Movie team. Breaking changes go into a new package (movie.v2), served alongside v1.
-package movie.v1;
+// Owned by the Movie team.
+package movie;
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
-option java_package = "com.backend.movie.api.v1";
+option java_package = "com.backend.movie.api";
 
 // UUIDs travel as strings. `optional` marks nullable fields, so "not set" and "empty" differ.
 // Each enum's 0 value means "not set", which the service rejects, so a forgotten field can't pass as a real value.
@@ -17,20 +17,14 @@ service MovieService {
   rpc GetMovie(GetMovieRequest) returns (Movie);
   rpc CreateMovie(CreateMovieRequest) returns (Movie);
   rpc UpdateMovie(UpdateMovieRequest) returns (Movie);
-  rpc PublishMovie(ChangeMovieStatusRequest) returns (Movie);
-  rpc UnpublishMovie(ChangeMovieStatusRequest) returns (Movie);
   rpc DeleteMovie(DeleteMovieRequest) returns (google.protobuf.Empty);
-  // Called by media-service once a file is stored. Returns the replaced file's key, for it to delete.
-  rpc AttachMedia(AttachMediaRequest) returns (AttachMediaResponse);
-  rpc RemoveMedia(RemoveMediaRequest) returns (Movie);
+  // Called by media-service once artwork is stored. Returns the replaced file's key, for it to delete.
+  rpc AttachArtwork(AttachArtworkRequest) returns (AttachArtworkResponse);
 }
 
 service PersonService {
   rpc ListPeople(ListPeopleRequest) returns (ListPeopleResponse);
   rpc GetPerson(GetPersonRequest) returns (Person);
-  rpc CreatePerson(CreatePersonRequest) returns (Person);
-  rpc UpdatePerson(UpdatePersonRequest) returns (Person);
-  rpc DeletePerson(DeletePersonRequest) returns (google.protobuf.Empty);
 }
 
 service CreditService {
@@ -41,31 +35,10 @@ service CreditService {
   rpc ListCreditsByPeople(ListCreditsByPeopleRequest) returns (ListCreditsByPeopleResponse);
 }
 
-enum MovieStatus {
-  MOVIE_STATUS_UNSPECIFIED = 0;
-  DRAFT = 1;
-  PUBLISHED = 2;
-}
-
-enum MediaKind {
-  MEDIA_KIND_UNSPECIFIED = 0;
-  ARTWORK = 1;
-  PREVIEW = 2;
-  FULL = 3;
-}
-
 enum CreditType {
   CREDIT_TYPE_UNSPECIFIED = 0;
   CAST = 1;
   CREATOR = 2;
-}
-
-message MovieMedia {
-  MediaKind kind = 1;
-  string storage_key = 2;
-  string content_type = 3;
-  int64 size_bytes = 4;
-  optional int32 duration_seconds = 5;
 }
 
 message Movie {
@@ -75,11 +48,9 @@ message Movie {
   // ISO format: YYYY-MM-DD.
   optional string release_date = 4;
   optional int32 runtime_minutes = 5;
-  MovieStatus status = 6;
-  repeated MovieMedia media = 7;
-  int32 version = 8;
-  google.protobuf.Timestamp created_at = 9;
-  google.protobuf.Timestamp updated_at = 10;
+  optional string artwork_key = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
 }
 
 message MovieFields {
@@ -93,9 +64,8 @@ message ListMoviesRequest {
   string query = 1;
   string cast_name = 2;
   string creator_name = 3;
-  MovieStatus status = 4;
-  int32 page = 5;
-  int32 page_size = 6;
+  int32 page = 4;
+  int32 page_size = 5;
 }
 
 message ListMoviesResponse {
@@ -113,45 +83,28 @@ message CreateMovieRequest {
 
 message UpdateMovieRequest {
   string id = 1;
-  int32 version = 2;
-  MovieFields fields = 3;
-}
-
-message ChangeMovieStatusRequest {
-  string id = 1;
-  int32 version = 2;
+  MovieFields fields = 2;
 }
 
 message DeleteMovieRequest {
   string id = 1;
-  int32 version = 2;
 }
 
-message AttachMediaRequest {
+message AttachArtworkRequest {
   string movie_id = 1;
-  MediaKind kind = 2;
-  string storage_key = 3;
-  string content_type = 4;
-  int64 size_bytes = 5;
-  optional int32 duration_seconds = 6;
+  string storage_key = 2;
 }
 
-message AttachMediaResponse {
+message AttachArtworkResponse {
   optional string replaced_storage_key = 1;
-}
-
-message RemoveMediaRequest {
-  string movie_id = 1;
-  MediaKind kind = 2;
 }
 
 message Person {
   string id = 1;
   string name = 2;
   optional string bio = 3;
-  int32 version = 4;
-  google.protobuf.Timestamp created_at = 5;
-  google.protobuf.Timestamp updated_at = 6;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
 }
 
 message ListPeopleRequest {
@@ -167,23 +120,6 @@ message ListPeopleResponse {
 
 message GetPersonRequest {
   string id = 1;
-}
-
-message CreatePersonRequest {
-  string name = 1;
-  optional string bio = 2;
-}
-
-message UpdatePersonRequest {
-  string id = 1;
-  int32 version = 2;
-  string name = 3;
-  optional string bio = 4;
-}
-
-message DeletePersonRequest {
-  string id = 1;
-  int32 version = 2;
 }
 
 message CreditRequest {
@@ -215,8 +151,7 @@ message PersonCredit {
   string person_id = 1;
   string movie_id = 2;
   string title = 3;
-  MovieStatus status = 4;
-  CreditType type = 5;
+  CreditType type = 4;
 }
 
 message ListCreditsByPeopleResponse {

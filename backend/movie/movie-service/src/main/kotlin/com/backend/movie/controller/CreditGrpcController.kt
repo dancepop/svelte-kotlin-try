@@ -1,18 +1,18 @@
 package com.backend.movie.controller
 
-import com.backend.movie.api.v1.CreditRequest
-import com.backend.movie.api.v1.CreditServiceGrpcKt
-import com.backend.movie.api.v1.ListCreditsByMoviesRequest
-import com.backend.movie.api.v1.ListCreditsByMoviesResponse
-import com.backend.movie.api.v1.ListCreditsByPeopleRequest
-import com.backend.movie.api.v1.ListCreditsByPeopleResponse
-import com.backend.movie.api.v1.listCreditsByMoviesResponse
-import com.backend.movie.api.v1.listCreditsByPeopleResponse
+import com.backend.movie.api.CreditRequest
+import com.backend.movie.api.CreditServiceGrpcKt
+import com.backend.movie.api.ListCreditsByMoviesRequest
+import com.backend.movie.api.ListCreditsByMoviesResponse
+import com.backend.movie.api.ListCreditsByPeopleRequest
+import com.backend.movie.api.ListCreditsByPeopleResponse
+import com.backend.movie.api.listCreditsByMoviesResponse
+import com.backend.movie.api.listCreditsByPeopleResponse
 import com.backend.movie.service.CreditService
 import com.google.protobuf.Empty
 import org.springframework.grpc.server.service.GrpcService
 
-/** gRPC entry point for credits. Only converts between proto and Kotlin types; the rules are in [CreditService]. */
+/** gRPC entry point for credits. Rejects invalid values and converts between proto and Kotlin types; the business logic is in [CreditService]. */
 @GrpcService
 class CreditGrpcController(
     private val creditService: CreditService,
@@ -37,11 +37,13 @@ class CreditGrpcController(
     }
 
     override suspend fun listCreditsByMovies(request: ListCreditsByMoviesRequest): ListCreditsByMoviesResponse = rpc {
+        requireValid(idCountErrors("movieIds", request.movieIdsCount))
         val rows = creditService.listCreditsByMovies(request.movieIdsList.map { parseUuid(it, "movieIds") })
         listCreditsByMoviesResponse { credits += rows.map { it.toProto() } }
     }
 
     override suspend fun listCreditsByPeople(request: ListCreditsByPeopleRequest): ListCreditsByPeopleResponse = rpc {
+        requireValid(idCountErrors("personIds", request.personIdsCount))
         val rows = creditService.listCreditsByPeople(request.personIdsList.map { parseUuid(it, "personIds") })
         listCreditsByPeopleResponse { credits += rows.map { it.toProto() } }
     }

@@ -9,10 +9,4 @@ class ValidationException(val fieldErrors: List<FieldError>) :
 
 class NotFoundException(message: String) : RuntimeException(message)
 
-/** The request was based on an old `version`: someone else saved first. */
-class ConflictException(message: String) : RuntimeException(message)
-
-/** The request is valid, but only allowed on a draft. */
-class PublishedMovieException : RuntimeException("Unpublish this movie to change it")
-
 class AlreadyExistsException(message: String) : RuntimeException(message)

@@ -9,8 +9,7 @@ import java.util.UUID
 // Each pattern is the escaped ILIKE pattern, or empty for "no filter". EXISTS only asks whether
 // a matching credit exists, so a movie crediting two Davids still appears once.
 private const val MOVIE_FILTER = """
-    WHERE m.status = :status
-      AND (:titlePattern = '' OR m.title ILIKE :titlePattern)
+    WHERE (:titlePattern = '' OR m.title ILIKE :titlePattern)
       AND (:castPattern = '' OR EXISTS (
             SELECT 1 FROM credits c JOIN people p ON p.id = c.person_id
             WHERE c.movie_id = m.id AND c.credit_type = 'CAST' AND p.name ILIKE :castPattern))
@@ -36,15 +35,10 @@ interface MovieRepository : CrudRepository<Movie, UUID> {
         titlePattern: String,
         castPattern: String,
         creatorPattern: String,
-        status: String,
         limit: Int,
         offset: Long,
     ): List<Movie>
 
     @Query("SELECT count(*) FROM movies m $MOVIE_FILTER")
-    fun countSearch(titlePattern: String, castPattern: String, creatorPattern: String, status: String): Long
-
-    // Holds the row until the transaction ends, so a publish arriving at the same moment waits.
-    @Query("SELECT * FROM movies WHERE id = :id FOR UPDATE")
-    fun findByIdForUpdate(id: UUID): Movie?
+    fun countSearch(titlePattern: String, castPattern: String, creatorPattern: String): Long
 }

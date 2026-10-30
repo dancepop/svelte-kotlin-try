@@ -1,28 +1,26 @@
 package com.backend.movie.controller
 
-import com.backend.movie.api.v1.AttachMediaRequest
-import com.backend.movie.api.v1.AttachMediaResponse
-import com.backend.movie.api.v1.ChangeMovieStatusRequest
-import com.backend.movie.api.v1.CreateMovieRequest
-import com.backend.movie.api.v1.DeleteMovieRequest
-import com.backend.movie.api.v1.GetMovieRequest
-import com.backend.movie.api.v1.ListMoviesRequest
-import com.backend.movie.api.v1.ListMoviesResponse
-import com.backend.movie.api.v1.Movie
-import com.backend.movie.api.v1.MovieFields
-import com.backend.movie.api.v1.MovieServiceGrpcKt
-import com.backend.movie.api.v1.RemoveMediaRequest
-import com.backend.movie.api.v1.UpdateMovieRequest
-import com.backend.movie.api.v1.attachMediaResponse
-import com.backend.movie.api.v1.listMoviesResponse
+import com.backend.movie.api.AttachArtworkRequest
+import com.backend.movie.api.AttachArtworkResponse
+import com.backend.movie.api.CreateMovieRequest
+import com.backend.movie.api.DeleteMovieRequest
+import com.backend.movie.api.GetMovieRequest
+import com.backend.movie.api.ListMoviesRequest
+import com.backend.movie.api.ListMoviesResponse
+import com.backend.movie.api.Movie
+import com.backend.movie.api.MovieFields
+import com.backend.movie.api.MovieServiceGrpcKt
+import com.backend.movie.api.UpdateMovieRequest
+import com.backend.movie.api.attachArtworkResponse
+import com.backend.movie.api.listMoviesResponse
 import com.backend.movie.model.MovieFilter
 import com.backend.movie.service.MovieService
 import com.google.protobuf.Empty
 import org.springframework.grpc.server.service.GrpcService
 
 /**
- * gRPC entry point for movies (the gRPC equivalent of a REST controller). Only converts between proto and
- * Kotlin types; the rules are in [MovieService]. Spring Boot registers every BindableService bean with the gRPC server.
+ * gRPC entry point for movies (the gRPC equivalent of a REST controller). Rejects invalid values and converts between
+ * proto and Kotlin types; the business logic is in [MovieService]. Spring Boot registers every BindableService bean with the gRPC server.
  */
 @GrpcService
 class MovieGrpcController(
@@ -30,11 +28,11 @@ class MovieGrpcController(
 ) : MovieServiceGrpcKt.MovieServiceCoroutineImplBase() {
 
     override suspend fun listMovies(request: ListMoviesRequest): ListMoviesResponse = rpc {
+        requireValid(pagingErrors(request.page, request.pageSize))
         val filter = MovieFilter(
             query = request.query,
             castName = request.castName,
             creatorName = request.creatorName,
-            status = request.status.toEnum(),
             page = request.page,
             pageSize = request.pageSize,
         )
@@ -51,15 +49,16 @@ class MovieGrpcController(
 
     override suspend fun createMovie(request: CreateMovieRequest): Movie = rpc {
         val fields = request.fields
+        fields.requireValidFields()
         movieService.createMovie(fields.title, fields.synopsisOrNull(), fields.releaseDateOrNull(), fields.runtimeOrNull())
             .toProto()
     }
 
     override suspend fun updateMovie(request: UpdateMovieRequest): Movie = rpc {
         val fields = request.fields
+        fields.requireValidFields()
         movieService.updateMovie(
             parseUuid(request.id, "id"),
-            request.version,
             fields.title,
             fields.synopsisOrNull(),
             fields.releaseDateOrNull(),
@@ -67,33 +66,18 @@ class MovieGrpcController(
         ).toProto()
     }
 
-    override suspend fun publishMovie(request: ChangeMovieStatusRequest): Movie = rpc {
-        movieService.publishMovie(parseUuid(request.id, "id"), request.version).toProto()
-    }
-
-    override suspend fun unpublishMovie(request: ChangeMovieStatusRequest): Movie = rpc {
-        movieService.unpublishMovie(parseUuid(request.id, "id"), request.version).toProto()
-    }
-
     override suspend fun deleteMovie(request: DeleteMovieRequest): Empty = rpc {
-        movieService.deleteMovie(parseUuid(request.id, "id"), request.version)
+        movieService.deleteMovie(parseUuid(request.id, "id"))
         Empty.getDefaultInstance()
     }
 
-    override suspend fun attachMedia(request: AttachMediaRequest): AttachMediaResponse = rpc {
-        val replaced = movieService.attachMedia(
-            parseUuid(request.movieId, "movieId"),
-            request.kind.toEnum(),
-            request.storageKey,
-            request.contentType,
-            request.sizeBytes,
-            if (request.hasDurationSeconds()) request.durationSeconds else null,
-        )
-        attachMediaResponse { replaced?.let { replacedStorageKey = it } }
+    override suspend fun attachArtwork(request: AttachArtworkRequest): AttachArtworkResponse = rpc {
+        val replaced = movieService.attachArtwork(parseUuid(request.movieId, "movieId"), request.storageKey)
+        attachArtworkResponse { replaced?.let { replacedStorageKey = it } }
     }
 
-    override suspend fun removeMedia(request: RemoveMediaRequest): Movie = rpc {
-        movieService.removeMedia(parseUuid(request.movieId, "movieId"), request.kind.toEnum()).toProto()
+    private fun MovieFields.requireValidFields() {
+        requireValid(movieFieldErrors(title, synopsisOrNull(), releaseDateOrNull(), runtimeOrNull()))
     }
 
     private fun MovieFields.synopsisOrNull(): String? = if (hasSynopsis()) synopsis else null
