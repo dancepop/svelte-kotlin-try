@@ -33,6 +33,7 @@ build/
 
 # Node
 node_modules/
+gateway/dist/
 
 # IDE / OS
 .idea/
