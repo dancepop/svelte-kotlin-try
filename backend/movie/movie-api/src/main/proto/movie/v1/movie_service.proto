@@ -1,0 +1,224 @@
+syntax = "proto3";
+
+// Owned by the Movie team. Breaking changes go into a new package (movie.v2), served alongside v1.
+package movie.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.backend.movie.api.v1";
+
+// UUIDs travel as strings. `optional` marks nullable fields, so "not set" and "empty" differ.
+// Each enum's 0 value means "not set", which the service rejects, so a forgotten field can't pass as a real value.
+
+service MovieService {
+  rpc ListMovies(ListMoviesRequest) returns (ListMoviesResponse);
+  rpc GetMovie(GetMovieRequest) returns (Movie);
+  rpc CreateMovie(CreateMovieRequest) returns (Movie);
+  rpc UpdateMovie(UpdateMovieRequest) returns (Movie);
+  rpc PublishMovie(ChangeMovieStatusRequest) returns (Movie);
+  rpc UnpublishMovie(ChangeMovieStatusRequest) returns (Movie);
+  rpc DeleteMovie(DeleteMovieRequest) returns (google.protobuf.Empty);
+  // Called by media-service once a file is stored. Returns the replaced file's key, for it to delete.
+  rpc AttachMedia(AttachMediaRequest) returns (AttachMediaResponse);
+  rpc RemoveMedia(RemoveMediaRequest) returns (Movie);
+}
+
+service PersonService {
+  rpc ListPeople(ListPeopleRequest) returns (ListPeopleResponse);
+  rpc GetPerson(GetPersonRequest) returns (Person);
+  rpc CreatePerson(CreatePersonRequest) returns (Person);
+  rpc UpdatePerson(UpdatePersonRequest) returns (Person);
+  rpc DeletePerson(DeletePersonRequest) returns (google.protobuf.Empty);
+}
+
+service CreditService {
+  rpc AddCredit(CreditRequest) returns (google.protobuf.Empty);
+  rpc RemoveCredit(CreditRequest) returns (google.protobuf.Empty);
+  // Take many ids, so the gateway's loaders can fetch a whole page's credits in one call.
+  rpc ListCreditsByMovies(ListCreditsByMoviesRequest) returns (ListCreditsByMoviesResponse);
+  rpc ListCreditsByPeople(ListCreditsByPeopleRequest) returns (ListCreditsByPeopleResponse);
+}
+
+enum MovieStatus {
+  MOVIE_STATUS_UNSPECIFIED = 0;
+  DRAFT = 1;
+  PUBLISHED = 2;
+}
+
+enum MediaKind {
+  MEDIA_KIND_UNSPECIFIED = 0;
+  ARTWORK = 1;
+  PREVIEW = 2;
+  FULL = 3;
+}
+
+enum CreditType {
+  CREDIT_TYPE_UNSPECIFIED = 0;
+  CAST = 1;
+  CREATOR = 2;
+}
+
+message MovieMedia {
+  MediaKind kind = 1;
+  string storage_key = 2;
+  string content_type = 3;
+  int64 size_bytes = 4;
+  optional int32 duration_seconds = 5;
+}
+
+message Movie {
+  string id = 1;
+  string title = 2;
+  optional string synopsis = 3;
+  // ISO format: YYYY-MM-DD.
+  optional string release_date = 4;
+  optional int32 runtime_minutes = 5;
+  MovieStatus status = 6;
+  repeated MovieMedia media = 7;
+  int32 version = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message MovieFields {
+  string title = 1;
+  optional string synopsis = 2;
+  optional string release_date = 3;
+  optional int32 runtime_minutes = 4;
+}
+
+message ListMoviesRequest {
+  string query = 1;
+  string cast_name = 2;
+  string creator_name = 3;
+  MovieStatus status = 4;
+  int32 page = 5;
+  int32 page_size = 6;
+}
+
+message ListMoviesResponse {
+  repeated Movie movies = 1;
+  int64 total_count = 2;
+}
+
+message GetMovieRequest {
+  string id = 1;
+}
+
+message CreateMovieRequest {
+  MovieFields fields = 1;
+}
+
+message UpdateMovieRequest {
+  string id = 1;
+  int32 version = 2;
+  MovieFields fields = 3;
+}
+
+message ChangeMovieStatusRequest {
+  string id = 1;
+  int32 version = 2;
+}
+
+message DeleteMovieRequest {
+  string id = 1;
+  int32 version = 2;
+}
+
+message AttachMediaRequest {
+  string movie_id = 1;
+  MediaKind kind = 2;
+  string storage_key = 3;
+  string content_type = 4;
+  int64 size_bytes = 5;
+  optional int32 duration_seconds = 6;
+}
+
+message AttachMediaResponse {
+  optional string replaced_storage_key = 1;
+}
+
+message RemoveMediaRequest {
+  string movie_id = 1;
+  MediaKind kind = 2;
+}
+
+message Person {
+  string id = 1;
+  string name = 2;
+  optional string bio = 3;
+  int32 version = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message ListPeopleRequest {
+  string query = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListPeopleResponse {
+  repeated Person people = 1;
+  int64 total_count = 2;
+}
+
+message GetPersonRequest {
+  string id = 1;
+}
+
+message CreatePersonRequest {
+  string name = 1;
+  optional string bio = 2;
+}
+
+message UpdatePersonRequest {
+  string id = 1;
+  int32 version = 2;
+  string name = 3;
+  optional string bio = 4;
+}
+
+message DeletePersonRequest {
+  string id = 1;
+  int32 version = 2;
+}
+
+message CreditRequest {
+  string movie_id = 1;
+  string person_id = 2;
+  CreditType type = 3;
+}
+
+message ListCreditsByMoviesRequest {
+  repeated string movie_ids = 1;
+}
+
+message MovieCredit {
+  string movie_id = 1;
+  string person_id = 2;
+  string name = 3;
+  CreditType type = 4;
+}
+
+message ListCreditsByMoviesResponse {
+  repeated MovieCredit credits = 1;
+}
+
+message ListCreditsByPeopleRequest {
+  repeated string person_ids = 1;
+}
+
+message PersonCredit {
+  string person_id = 1;
+  string movie_id = 2;
+  string title = 3;
+  MovieStatus status = 4;
+  CreditType type = 5;
+}
+
+message ListCreditsByPeopleResponse {
+  repeated PersonCredit credits = 1;
+}
