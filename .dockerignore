@@ -1,0 +1,8 @@
+# Used by builds whose context is the repo root (the gateway).
+# Allow-list: send only what the gateway image needs, instead of the whole repo.
+*
+!gateway/package.json
+!gateway/package-lock.json
+!gateway/tsconfig.json
+!gateway/src
+!backend/*/*-api/src/main/proto
