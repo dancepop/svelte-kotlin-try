@@ -27,6 +27,10 @@ interface MovieInput {
   releaseDate?: string | null;
   runtimeMinutes?: number | null;
 }
+interface PersonInput {
+  name: string;
+  bio?: string | null;
+}
 interface UploadArgs {
   movieId: string;
   file: Promise<FileUpload>;
@@ -79,6 +83,14 @@ export const resolvers = {
       const { createReadStream } = await file;
       const { storageKey } = await uploadFile(clients.media, movieId, createReadStream());
       return mediaUrl(storageKey);
+    },
+    createPerson: async (_: unknown, { input }: { input: PersonInput }, { clients }: Context) =>
+      toPerson(await unary<Person>(clients.person, "createPerson", { fields: input })),
+    updatePerson: async (_: unknown, { id, input }: IdArgs & { input: PersonInput }, { clients }: Context) =>
+      toPerson(await unary<Person>(clients.person, "updatePerson", { id, fields: input })),
+    deletePerson: async (_: unknown, { id }: IdArgs, { clients }: Context) => {
+      await unary(clients.person, "deletePerson", { id });
+      return true;
     },
     addCredit: async (_: unknown, args: CreditArgs, { clients }: Context) => {
       await unary(clients.credit, "addCredit", args);

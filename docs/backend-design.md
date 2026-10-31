@@ -21,7 +21,7 @@ flowchart LR
 |---|---|---|
 | **gateway** (Node, TypeScript) | the GraphQL schema the frontend uses; the `/media/*` HTTP route | movie-service, media-service |
 | **movie-service** (Kotlin) | all data and every movie rule: movies, people, credits, search, and which file is each movie's artwork | Postgres, media-service |
-| **media-service** (Kotlin) | the files: checking type and size, storing, reading, deleting | movie-service |
+| **media-service** (Kotlin) | the files: storing, reading, deleting | movie-service |
 
 **The gateway only routes.** Each GraphQL resolver makes at most one gRPC call to one service, and calls for the same data across a page are batched into one (§5). The gateway translates GraphQL to gRPC, builds media URLs from storage keys and maps gRPC errors to GraphQL errors; it makes no decisions and never combines services.
 
@@ -78,7 +78,7 @@ com.backend.movie
 | Repository | From Spring Data | Hand-written SQL (`@Query`) |
 |---|---|---|
 | `MovieRepository` | `save` (insert or update), `findById`, `deleteById` | search page + count, filtered by title, cast name and creator name (§3.7) |
-| `PersonRepository` | `findById` | search page + count |
+| `PersonRepository` | `save` (insert or update), `findById`, `deleteById` | search page + count |
 | `CreditRepository` | | insert (the id is never null, so `save()` would run an UPDATE), delete, the credits of many movies joined with people, the credits of many people joined with movies |
 
 ### media-service
@@ -128,7 +128,7 @@ sequenceDiagram
   V->>V: controller validates every field
   V->>V: INSERT INTO movies
   V-->>G: Movie
-  G-->>B: Movie, then the browser opens its edit page
+  G-->>B: Movie, then the browser opens its page
 ```
 
 - **Validate** every field before touching the database. Any broken rule → `INVALID_ARGUMENT`, nothing written.
@@ -201,7 +201,7 @@ sequenceDiagram
 
 ### 3.5 Add or remove a credit
 
-People come from seed data, so the app doesn't create, edit or delete them. A credit is how a person becomes cast or a creator on a movie.
+A credit is how a person becomes cast or a creator on a movie.
 
 | Operation | SQL | Errors |
 |---|---|---|
@@ -236,7 +236,7 @@ The movies and people pages each have their own list and search box. With no sea
 - `movies(search, castName, creatorName, page, pageSize)` → `ListMovies`: one query each for the page of movies and the total count.
 - `people(search, page, pageSize)` → `ListPeople`: one query each for the page of people and the total count.
 - **Credits are fetched only when a query asks for them,** through `ListCreditsByMovies` and `ListCreditsByPeople` (§5).
-- **The search box syntax** belongs to the browser: `heat cast:david creator:"michael mann"` is split into `search`, `castName` and `creatorName` before the request is sent. Only `cast:` and `creator:` are recognised, anything else stays part of the title search, names with spaces need quotes, and if a filter is repeated the last one wins.
+- **The search box syntax** belongs to the browser: `heat cast:david creator:"michael mann"` is split into `search`, `castName` and `creatorName` before the request is sent. Only `cast:` and `creator:` are recognised, anything else stays part of the title search, a space after the colon is allowed, names with spaces need quotes, and if a filter is repeated the last one wins.
 - **Movie search is an AND search:** a movie must match every value given, and an empty value is skipped. All matching is `ILIKE` on part of the text, so `cast:david` finds every movie crediting anyone named David, and a movie crediting two Davids appears once:
 
   ```sql
@@ -254,6 +254,18 @@ The movies and people pages each have their own list and search box. With no sea
 - **Input handling:** values are trimmed, and `%`, `_` and `\` are escaped, or searching `100%` would match everything.
 - **Sorting:** a title or name term of 3 or more characters ranks by `similarity()`. Otherwise results sort by title or name, because similarity ranking means nothing for one or two letters. `id` is always the last sort column: titles and names can repeat, and without it those rows could swap places between pages. A movie's credits sort by name.
 - **Paging** by offset: `page` (from 0), `pageSize` (1–100, default 20) and a `totalCount` for page numbers. Out-of-range values are `INVALID_ARGUMENT`. The offset is a `Long`, so a huge `page` returns an empty page instead of overflowing.
+
+### 3.8 Create, edit or delete a person
+
+| Operation | SQL | Errors |
+|---|---|---|
+| `createPerson(input)` | `INSERT INTO people` | a broken rule → `INVALID_ARGUMENT` |
+| `updatePerson(id, input)` | `UPDATE people … WHERE id = ?` | a broken rule → `INVALID_ARGUMENT`; unknown id → `NOT_FOUND` |
+| `deletePerson(id)` | `DELETE FROM people`, cascading to their credits | unknown id → `NOT_FOUND` |
+
+- A new person has no role until they're credited on a movie (§3.5).
+- The form sends back every field, because an update replaces the whole record.
+- Deleting a person removes them from every movie they're credited on. The movies stay.
 
 ### Failures at a glance
 
@@ -278,7 +290,7 @@ UUIDs travel as strings and are parsed in the controller (a malformed one is `IN
 | `MovieService` | `ListMovies(query, cast_name, creator_name, page, page_size)` | returns one page and `total_count` |
 | | `GetMovie`, `CreateMovie(fields)`, `UpdateMovie(id, fields)`, `DeleteMovie(id)` | |
 | | `AttachArtwork(movie_id, storage_key)` | called by media-service; returns the replaced `storage_key` |
-| `PersonService` | `ListPeople(query, page, page_size)`, `GetPerson` | |
+| `PersonService` | `ListPeople(query, page, page_size)`, `GetPerson`, `CreatePerson(fields)`, `UpdatePerson(id, fields)`, `DeletePerson(id)` | |
 | `CreditService` | `AddCredit`, `RemoveCredit` | |
 | | `ListCreditsByMovies(movie_ids)` | at most 100 ids; returns movie id, person id, name and type, for `Movie.credits` |
 | | `ListCreditsByPeople(person_ids)` | at most 100 ids; returns person id, movie id, title and type, for `Person.credits` |
@@ -318,6 +330,9 @@ type Mutation {
   deleteMovie(id: ID!): Boolean!
   "Returns the new artwork's URL."
   uploadMovieArtwork(movieId: ID!, file: Upload!): String!
+  createPerson(input: PersonInput!): Person!
+  updatePerson(id: ID!, input: PersonInput!): Person!
+  deletePerson(id: ID!): Boolean!
   addCredit(movieId: ID!, personId: ID!, type: CreditType!): Boolean!
   removeCredit(movieId: ID!, personId: ID!, type: CreditType!): Boolean!
 }
@@ -327,6 +342,11 @@ input MovieInput {
   synopsis: String
   releaseDate: String
   runtimeMinutes: Int
+}
+
+input PersonInput {
+  name: String!
+  bio: String
 }
 
 enum CreditType { CAST, CREATOR }
@@ -423,7 +443,7 @@ Every gRPC call has a deadline: 5 s for normal calls; `UploadFile` and `ReadFile
 | gateway → services | `MOVIE_SERVICE_ADDR`, `MEDIA_SERVICE_ADDR` | `localhost:9091`, `localhost:9092` |
 | gateway's public URL (for media URLs) | `PUBLIC_URL` | `http://localhost:4000` |
 
-The size limit and allowed types are code constants: they're rules with tests, not deployment settings. gRPC connects on the first call, so either service can start first.
+gRPC connects on the first call, so either service can start first.
 
 ---
 
@@ -446,6 +466,6 @@ The test plan is in [unit-test-plan.md](unit-test-plan.md).
 
 ---
 
-## 10. Open decisions
+## 10. Sample data
 
-1. **Seed data:** the app needs seeded `people`, because it can't create them. A separate script, not Flyway, and not part of unit tests. Design it later.
+`docker compose --profile seed up` also starts a `seed` service, which adds sample movies, people and credits (`infra/postgres/seed`). It waits for movie-service to create the tables, and only adds data to an empty database, so a later run can't bring back deleted rows. It adds no artwork, because files aren't in the database.

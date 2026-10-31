@@ -26,5 +26,21 @@ services:
       timeout: 3s
       retries: 12
 
+  # Optional sample data, only started with: docker compose --profile seed up
+  seed:
+    image: postgres:18
+    profiles: [seed]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: app
+      PGUSER: movie
+      PGPASSWORD: movie
+    volumes:
+      - ./infra/postgres/seed:/seed:ro
+    command: ["sh", "/seed/seed.sh"]
+
 volumes:
   postgres-data:

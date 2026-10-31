@@ -1,6 +1,6 @@
 # Initial Setup
 
-This document records how the project is set up and why. Movie, cast and artwork features come in the next phase (class and API design).
+This document records how the project is set up and why. The features are designed in [database-design.md](database-design.md), [backend-design.md](backend-design.md) and [frontend-design.md](frontend-design.md).
 
 ---
 
@@ -16,7 +16,7 @@ Browser → GraphQL → **Apollo Server + Express** (Node/TS) → gRPC → Kotli
 
 ### Two services, layered inside
 
-- **movie-service** owns movies **and** cast/creators. People are attributes of a movie and are queried and edited together, so splitting them would turn joins into cross-service calls.
+- **movie-service** owns movies **and** cast/creators. Movies and people are linked by credits and queried together, so splitting them would turn joins into cross-service calls.
 - **media-service** owns artwork files: uploads, storage and streaming. It has different scaling and storage needs from movie-service, because it handles files rather than rows.
 - Inside each `-service` module, code is layered by **package**: `controller/` (gRPC entry points) → `service/` (business logic) → `repository/` (database). Layering doesn't need Gradle modules; only the published contract is its own module.
 
@@ -115,7 +115,7 @@ svelte-kotlin-try/
   - `grpc`: Java stubs, which the Kotlin stubs build on;
   - `grpckt`: **coroutine** stubs, so service methods are `suspend fun`;
   - `kotlin` (built in): Kotlin DSL builders such as `movie { title = "Heat" }`.
-- **`-service` modules** are Spring Boot apps (`spring-boot-starter-grpc-server`). Each has one gRPC controller (`controller/`) extending the generated `...CoroutineImplBase`. Spring Boot also registers the standard `grpc.health.v1.Health` service automatically.
+- **`-service` modules** are Spring Boot apps (`spring-boot-starter-grpc-server`). Their gRPC controllers (`controller/`) extend the generated `...CoroutineImplBase`, one per gRPC service. Spring Boot also registers the standard `grpc.health.v1.Health` service automatically.
 - **Known warning:** `Configuration.setVisible(boolean) has been deprecated` comes from the protobuf plugin itself (`ProtobufPlugin.groovy`), even in 0.10.0. It is harmless until Gradle 11.
 
 ```bash
@@ -134,7 +134,13 @@ svelte-kotlin-try/
 - **Files:**
   - `config.ts`: env vars;
   - `grpc/clients.ts`: loads protos and creates clients;
+  - `grpc/types.ts`: the gRPC messages' TypeScript types;
   - `schema.ts` + `resolvers.ts`: the GraphQL API;
+  - `mappers.ts`: gRPC responses → GraphQL types;
+  - `loaders.ts`: batches credit lookups;
+  - `errors.ts`: gRPC errors → GraphQL errors;
+  - `upload.ts`: forwards an upload to media-service;
+  - `media-route.ts`: `GET /media/*`;
   - `app.ts`: Express + Apollo + `/healthz`;
   - `index.ts`: starts the server.
 
@@ -142,13 +148,13 @@ svelte-kotlin-try/
 
 ## 6. Frontend (`frontend/`)
 
-- **Stack:** SvelteKit 3, Svelte 5, Vite 8, TypeScript 6, Vitest 5. Scaffolded with `npx sv create` (minimal template, prettier, eslint, vitest, adapter-node).
+- **Stack:** SvelteKit 3, Svelte 5, Vite 8, TypeScript 6, Vitest 5, Tailwind 4, daisyUI 5. Scaffolded with `npx sv create` (minimal template, prettier, eslint, vitest, adapter-node).
 - **SvelteKit 3 differs from older tutorials:**
   - config lives in `vite.config.ts`;
   - `$lib` is `#lib` (Node subpath imports), and imports include the extension: `#lib/api/graphql.ts`;
   - env vars are declared in `src/env.ts` (`defineEnvVars`) and imported from `$app/env/public`. `GRAPHQL_URL` is read at server start.
 - **Tests:** Vitest unit tests in Node, plus component tests in headless Chromium via Playwright (run `npx playwright install chromium` once).
-- **GraphQL calls** use a small `fetch` helper for now. Uploads will use `XMLHttpRequest`, to get `upload.onprogress` events.
+- **GraphQL calls** use a small `fetch` helper. Uploads will use `XMLHttpRequest`, to get `upload.onprogress` events.
 
 ---
 
@@ -157,6 +163,7 @@ svelte-kotlin-try/
 Docker only runs Postgres. The services, gateway and frontend run on the host.
 
 - **Postgres 18** is the version we'd run on AWS RDS. Its credentials are local-only. It's on host port `5433`, so it doesn't clash with another Postgres on `5432`.
+- **Sample data** is optional: `docker compose --profile seed up` also runs the `seed` service (see `docs/backend-design.md` §10).
 
 ---
 
@@ -166,4 +173,4 @@ Docker only runs Postgres. The services, gateway and frontend run on the host.
 
 - [x] Artwork storage: a local folder on media-service (see `docs/backend-design.md`).
 - [x] Artwork files go to media-service. movie-service keeps each movie's `artwork_key`.
-- [ ] Frontend GraphQL client: Apollo Client core or urql?
+- [x] Frontend GraphQL client: the small `fetch` helper (see `docs/frontend-design.md`).

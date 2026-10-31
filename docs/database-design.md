@@ -113,10 +113,10 @@ erDiagram
 
 ### Why `people` + `credits` and not `cast` and `creators` tables
 The spec says "cast and creators". One person can be a creator on one film and cast in another, or both on the same film. So:
-- **`people`** says *who someone is* (name, bio). The rows come from seed data, and this is the list you browse on a "Cast & Creators" page.
+- **`people`** says *who someone is* (name, bio). This is the list you add to, edit and delete from on a "Cast & Creators" page.
 - **`credits`** says *what they did on one movie*: `credit_type` is `CAST` or `CREATOR`.
 
-With separate `cast` and `creators` tables, someone who was both a creator and cast would be stored twice.
+With separate `cast` and `creators` tables, someone who was both a creator and cast would be stored twice, and editing their bio would mean editing two rows.
 
 The **Rule** columns below are enforced by the application, not the database (see §2), except where they say PK or FK.
 
@@ -141,8 +141,8 @@ The **Rule** columns below are enforced by the application, not the database (se
 | Column | Type | Null | Default | Rule |
 |---|---|---|---|---|
 | `id` | uuid | no | `uuidv7()` | PK |
-| `name` | text | no | | |
-| `bio` | text | yes | | |
+| `name` | text | no | | not blank, ≤ 200 chars |
+| `bio` | text | yes | | ≤ 5000 chars |
 | `created_at`, `updated_at` | timestamptz | no | `now()` | |
 
 - **Indexes:** a trigram GIN index on `name`.
@@ -162,7 +162,7 @@ The **Rule** columns below are enforced by the application, not the database (se
 
 ### Delete behaviour
 
-Deleting a movie removes its `credits` (cascade), and the `people` stay. The app doesn't delete people.
+Deleting a movie removes its `credits` (cascade), and the `people` stay. Deleting a person removes their `credits` (cascade), and the `movies` stay.
 
 ---
 
@@ -240,4 +240,3 @@ Decided:
 - movie-service owns all data, including each movie's `artwork_key`. media-service has no database; it handles the artwork files.
 - No `CHECK` constraints; value rules live in the application. Uniqueness stays in the database (`pk_credits`).
 - Left out to match the spec: genres, `people.birth_date`, `credits.role` / `billing_order`, a unique title + release date on `movies` (duplicate movie titles are allowed), and version columns (when two people edit the same row, the last save wins).
-- People come from seed data. The app can credit them on movies, but doesn't create, edit or delete them.

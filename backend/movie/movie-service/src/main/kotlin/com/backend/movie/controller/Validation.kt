@@ -9,6 +9,8 @@ private const val MAX_TITLE_LENGTH = 200
 private const val MAX_SYNOPSIS_LENGTH = 5000
 private const val MIN_RUNTIME_MINUTES = 1
 private const val MAX_RUNTIME_MINUTES = 1000
+private const val MAX_NAME_LENGTH = 200
+private const val MAX_BIO_LENGTH = 5000
 private const val MAX_PAGE_SIZE = 100
 
 internal fun movieFieldErrors(
@@ -29,6 +31,16 @@ internal fun movieFieldErrors(
     }
     if (runtimeMinutes != null && runtimeMinutes !in MIN_RUNTIME_MINUTES..MAX_RUNTIME_MINUTES) {
         add(FieldError("runtimeMinutes", "Runtime must be $MIN_RUNTIME_MINUTES to $MAX_RUNTIME_MINUTES minutes"))
+    }
+}
+
+internal fun personFieldErrors(name: String, bio: String?): List<FieldError> = buildList {
+    if (name.isBlank()) add(FieldError("name", "Name is required"))
+    if (name.trim().length > MAX_NAME_LENGTH) {
+        add(FieldError("name", "Name must be $MAX_NAME_LENGTH characters or fewer"))
+    }
+    if (bio != null && bio.length > MAX_BIO_LENGTH) {
+        add(FieldError("bio", "Bio must be $MAX_BIO_LENGTH characters or fewer"))
     }
 }
 

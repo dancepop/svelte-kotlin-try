@@ -25,6 +25,9 @@ service MovieService {
 service PersonService {
   rpc ListPeople(ListPeopleRequest) returns (ListPeopleResponse);
   rpc GetPerson(GetPersonRequest) returns (Person);
+  rpc CreatePerson(CreatePersonRequest) returns (Person);
+  rpc UpdatePerson(UpdatePersonRequest) returns (Person);
+  rpc DeletePerson(DeletePersonRequest) returns (google.protobuf.Empty);
 }
 
 service CreditService {
@@ -107,6 +110,11 @@ message Person {
   google.protobuf.Timestamp updated_at = 5;
 }
 
+message PersonFields {
+  string name = 1;
+  optional string bio = 2;
+}
+
 message ListPeopleRequest {
   string query = 1;
   int32 page = 2;
@@ -119,6 +127,19 @@ message ListPeopleResponse {
 }
 
 message GetPersonRequest {
+  string id = 1;
+}
+
+message CreatePersonRequest {
+  PersonFields fields = 1;
+}
+
+message UpdatePersonRequest {
+  string id = 1;
+  PersonFields fields = 2;
+}
+
+message DeletePersonRequest {
   string id = 1;
 }
 

@@ -6,7 +6,7 @@ import org.springframework.data.relational.core.mapping.Table
 import java.time.Instant
 import java.util.UUID
 
-/** A row of `people`: anyone who can be credited on a movie, as cast or creator. The rows come from seed data. */
+/** A row of `people`: anyone who can be credited on a movie, as cast or creator. */
 @Table("people")
 data class Person(
     @Id val id: UUID? = null,

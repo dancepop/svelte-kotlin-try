@@ -14,6 +14,9 @@ export const typeDefs = /* GraphQL */ `
     deleteMovie(id: ID!): Boolean!
     "Returns the new artwork's URL."
     uploadMovieArtwork(movieId: ID!, file: Upload!): String!
+    createPerson(input: PersonInput!): Person!
+    updatePerson(id: ID!, input: PersonInput!): Person!
+    deletePerson(id: ID!): Boolean!
     addCredit(movieId: ID!, personId: ID!, type: CreditType!): Boolean!
     removeCredit(movieId: ID!, personId: ID!, type: CreditType!): Boolean!
   }
@@ -23,6 +26,11 @@ export const typeDefs = /* GraphQL */ `
     synopsis: String
     releaseDate: String
     runtimeMinutes: Int
+  }
+
+  input PersonInput {
+    name: String!
+    bio: String
   }
 
   enum CreditType {

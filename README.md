@@ -33,6 +33,8 @@ Requires Docker for Postgres, a JDK (17+, used to run Gradle; JDK 25 is download
 ```bash
 # 1. Postgres on port 5433. The init script creates the movie role and schema.
 docker compose up
+# Or, to also add sample movies and people to an empty database once movie-service has created the tables:
+docker compose --profile seed up
 
 # 2. Backend services. Artwork is stored in ~/.movie-app/media.
 cd backend && ./gradlew :movie:movie-service:bootRun
