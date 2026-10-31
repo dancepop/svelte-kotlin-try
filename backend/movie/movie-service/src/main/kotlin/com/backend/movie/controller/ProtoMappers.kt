@@ -13,28 +13,29 @@ import com.backend.movie.model.MovieCreditRow
 import com.backend.movie.model.PersonCreditRow
 import com.google.protobuf.Timestamp
 import java.time.Instant
-import java.util.UUID
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
 import com.backend.movie.api.CreditType as ProtoCreditType
 import com.backend.movie.api.Movie as ProtoMovie
 import com.backend.movie.api.MovieCredit as ProtoMovieCredit
 import com.backend.movie.api.Person as ProtoPerson
 import com.backend.movie.api.PersonCredit as ProtoPersonCredit
 
-// Proto → Kotlin. A bad value is the caller's mistake, so it's a validation error.
+// Proto → Kotlin. The .proto rules have already checked ids and enums, so only dates can still be wrong here.
 
-internal fun parseUuid(value: String, field: String): UUID = try {
-    UUID.fromString(value)
-} catch (_: IllegalArgumentException) {
-    throw invalid(field, "Not a valid id")
+// The rule only checks the YYYY-MM-DD shape. LocalDate.parse is strict, so it also rejects 2025-02-30
+// instead of rounding it to March 2.
+internal fun parseDate(value: String): LocalDate = try {
+    LocalDate.parse(value)
+} catch (_: DateTimeParseException) {
+    throw ValidationException(listOf(FieldError("releaseDate", "Release date must be a real date in the format YYYY-MM-DD")))
 }
 
 internal fun ProtoCreditType.toEnum(): CreditType = when (this) {
     ProtoCreditType.CAST -> CreditType.CAST
     ProtoCreditType.CREATOR -> CreditType.CREATOR
-    else -> throw invalid("type", "Type is required")
+    else -> error("Unexpected credit type $this") // The `required` rule already rejected it.
 }
-
-private fun invalid(field: String, message: String) = ValidationException(listOf(FieldError(field, message)))
 
 // Kotlin → proto.
 

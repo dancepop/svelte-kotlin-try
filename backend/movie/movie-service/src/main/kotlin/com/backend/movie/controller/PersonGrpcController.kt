@@ -13,15 +13,15 @@ import com.backend.movie.api.listPeopleResponse
 import com.backend.movie.service.PersonService
 import com.google.protobuf.Empty
 import org.springframework.grpc.server.service.GrpcService
+import java.util.UUID
 
-/** gRPC entry point for people. Rejects invalid values and converts between proto and Kotlin types; the business logic is in [PersonService]. */
+/** gRPC entry point for people. [rpc] checks each request against the rules in the .proto, then this converts between proto and Kotlin types; the business logic is in [PersonService]. */
 @GrpcService
 class PersonGrpcController(
     private val personService: PersonService,
 ) : PersonServiceGrpcKt.PersonServiceCoroutineImplBase() {
 
-    override suspend fun listPeople(request: ListPeopleRequest): ListPeopleResponse = rpc {
-        requireValid(pagingErrors(request.page, request.pageSize))
+    override suspend fun listPeople(request: ListPeopleRequest): ListPeopleResponse = rpc(request) {
         val page = personService.listPeople(request.query, request.page, request.pageSize)
         listPeopleResponse {
             people += page.items.map { it.toProto() }
@@ -29,29 +29,23 @@ class PersonGrpcController(
         }
     }
 
-    override suspend fun getPerson(request: GetPersonRequest): Person = rpc {
-        personService.getPerson(parseUuid(request.id, "id")).toProto()
+    override suspend fun getPerson(request: GetPersonRequest): Person = rpc(request) {
+        personService.getPerson(UUID.fromString(request.id)).toProto()
     }
 
-    override suspend fun createPerson(request: CreatePersonRequest): Person = rpc {
+    override suspend fun createPerson(request: CreatePersonRequest): Person = rpc(request) {
         val fields = request.fields
-        fields.requireValidFields()
         personService.createPerson(fields.name, fields.bioOrNull()).toProto()
     }
 
-    override suspend fun updatePerson(request: UpdatePersonRequest): Person = rpc {
+    override suspend fun updatePerson(request: UpdatePersonRequest): Person = rpc(request) {
         val fields = request.fields
-        fields.requireValidFields()
-        personService.updatePerson(parseUuid(request.id, "id"), fields.name, fields.bioOrNull()).toProto()
+        personService.updatePerson(UUID.fromString(request.id), fields.name, fields.bioOrNull()).toProto()
     }
 
-    override suspend fun deletePerson(request: DeletePersonRequest): Empty = rpc {
-        personService.deletePerson(parseUuid(request.id, "id"))
+    override suspend fun deletePerson(request: DeletePersonRequest): Empty = rpc(request) {
+        personService.deletePerson(UUID.fromString(request.id))
         Empty.getDefaultInstance()
-    }
-
-    private fun PersonFields.requireValidFields() {
-        requireValid(personFieldErrors(name, bioOrNull()))
     }
 
     private fun PersonFields.bioOrNull(): String? = if (hasBio()) bio else null

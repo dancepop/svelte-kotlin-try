@@ -37,22 +37,22 @@ class MovieService(
     fun getMovie(id: UUID): Movie = findMovie(id)
 
     @Transactional
-    fun createMovie(title: String, synopsis: String?, releaseDate: String?, runtimeMinutes: Int?): Movie {
+    fun createMovie(title: String, synopsis: String?, releaseDate: LocalDate?, runtimeMinutes: Int?): Movie {
         val movie = Movie(
             title = title.trim(),
             synopsis = synopsis,
-            releaseDate = releaseDate?.let(LocalDate::parse),
+            releaseDate = releaseDate,
             runtimeMinutes = runtimeMinutes,
         )
         return movieRepository.save(movie)
     }
 
     @Transactional
-    fun updateMovie(id: UUID, title: String, synopsis: String?, releaseDate: String?, runtimeMinutes: Int?): Movie {
+    fun updateMovie(id: UUID, title: String, synopsis: String?, releaseDate: LocalDate?, runtimeMinutes: Int?): Movie {
         val changed = findMovie(id).copy(
             title = title.trim(),
             synopsis = synopsis,
-            releaseDate = releaseDate?.let(LocalDate::parse),
+            releaseDate = releaseDate,
             runtimeMinutes = runtimeMinutes,
             updatedAt = Instant.now(),
         )

@@ -3,6 +3,7 @@ syntax = "proto3";
 // Owned by the Media team.
 package media;
 
+import "buf/validate/validate.proto";
 import "google/protobuf/empty.proto";
 
 option java_multiple_files = true;
@@ -18,9 +19,11 @@ service MediaService {
   rpc DeleteMovieFiles(DeleteMovieFilesRequest) returns (google.protobuf.Empty);
 }
 
+// The (buf.validate.field) options are the request rules; media-service checks every message against them with protovalidate.
+
 message UploadFileRequest {
   oneof payload {
-    string movie_id = 1;
+    string movie_id = 1 [(buf.validate.field).string.uuid = true];
     bytes chunk = 2;
     bool complete = 3;
   }
@@ -46,5 +49,5 @@ message ReadFileResponse {
 }
 
 message DeleteMovieFilesRequest {
-  string movie_id = 1;
+  string movie_id = 1 [(buf.validate.field).string.uuid = true];
 }

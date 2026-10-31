@@ -22,6 +22,7 @@ dependencies {
     api(libs.grpc.kotlin.stub)
     api(libs.protobuf.kotlin)
     api(libs.kotlinx.coroutines.core)
+    api(libs.protovalidate)
 }
 
 protobuf {

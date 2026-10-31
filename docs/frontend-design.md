@@ -1,6 +1,6 @@
 # Frontend design
 
-Status: **proposal, waiting for approval**. This doc covers the pages, how they load and change data, and how they look. The GraphQL schema and the flows behind it are in [backend-design.md](backend-design.md).
+Status: **built**. This doc covers the pages, how they load and change data, and how they look. The GraphQL schema and the flows behind it are in [backend-design.md](backend-design.md).
 
 ---
 
@@ -143,7 +143,7 @@ const movies = new Loader(() =>
 
 - **Search and page live in the URL** (`/?q=heat+cast:david&page=2`), so refresh and the back button keep them. Searching and changing page call `goto`, and the effect refetches when the URL changes.
 - **Search runs on submit,** when the user presses Enter or the button. This keeps requests to one per search, with no debounce timer.
-- **Pages are shown from 1 and sent from 0.** `page=2` in the URL requests `page: 1`, with the gateway's default page size of 20.
+- **Pages are shown from 1 and sent from 0.** `page=2` in the URL requests `page: 1`, with a page size of 20.
 - **Queries ask only for what the page shows.** The movie grid leaves out `credits`; the movie page includes them.
 - **Changes refetch.** After an edit or a credit change, the page loads the movie again. An artwork upload replaces the image using the URL it returns.
 
@@ -179,7 +179,7 @@ Empty results show "No movies found" or "No people found".
 
 ## 7. Forms
 
-- **The server owns the rules.** `Validation.kt` decides what's valid and its messages appear beside the fields. The form only adds browser hints: `required` and `maxlength` on the title, `maxlength` on the synopsis, `type="date"`, and `type="number"` with `min` and `max` on the runtime. The person form has `required` and `maxlength` on the name and `maxlength` on the bio.
+- **The server owns the rules.** The rules in the `.proto` files decide what's valid, and their messages appear beside the fields. The form only adds browser hints: `required` and `maxlength` on the title, `maxlength` on the synopsis, `type="date"`, and `type="number"` with `min` and `max` on the runtime. The person form has `required` and `maxlength` on the name and `maxlength` on the bio.
 - **Empty fields are sent as `null`.** An empty `<input>` gives `""`, which would fail the date check. Saving always sends every field, because `updateMovie` and `updatePerson` replace them.
 - **Values stay in the form when saving fails,** so the user can correct them.
 
@@ -254,10 +254,4 @@ The same person can be both cast and creator on one movie. Adding the same credi
 4. **Artwork and credits:** upload with progress, then adding and removing credits.
 5. **Final pass:** check phone widths and every state in §5, then do a full local run-through.
 
-Frontend tests follow [unit-test-plan.md](unit-test-plan.md) once it's approved.
-
----
-
-## 13. Open decisions
-
-1. **Field errors:** the `field-error-bin` trailer or Google's rich error details. Either works here, as long as errors keep the `fieldErrors` format with the same field names.
+Frontend tests follow [unit-test-plan.md](unit-test-plan.md).

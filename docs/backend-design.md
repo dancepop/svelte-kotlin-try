@@ -1,6 +1,6 @@
 # Backend design
 
-Status: **proposal, waiting for approval**. Tables, keys and indexes are in [database-design.md](database-design.md); this doc covers the services, their gRPC contracts and how requests flow through them.
+Status: **built**. Tables, keys and indexes are in [database-design.md](database-design.md); this doc covers the services, their gRPC contracts and how requests flow through them.
 
 ---
 
@@ -40,13 +40,12 @@ com.backend.movie
 ├── MovieApplication.kt
 ├── client/                         the call to media-service
 │   └── MediaClient.kt
-├── controller/                     gRPC endpoints: validation, proto ⇄ Kotlin mapping
+├── controller/                     gRPC endpoints: proto ⇄ Kotlin mapping
 │   ├── MovieGrpcController.kt
 │   ├── PersonGrpcController.kt
 │   ├── CreditGrpcController.kt
-│   ├── GrpcExceptionHandler.kt     exceptions → gRPC statuses
-│   ├── ProtoMappers.kt             proto ⇄ Kotlin conversions
-│   └── Validation.kt               the value rules
+│   ├── GrpcExceptionHandler.kt     request validation; exceptions → gRPC statuses
+│   └── ProtoMappers.kt             proto ⇄ Kotlin conversions
 ├── entities/                       table rows
 │   ├── Movie.kt
 │   ├── Person.kt
@@ -70,9 +69,11 @@ com.backend.movie
     └── Search.kt                   search patterns and page offsets
 ```
 
-- **Each layer calls only the one below.** The controller is the only code that sees movie-api proto classes; `MediaClient` is the only code that sees media-api ones. Services and their tests work with plain Kotlin types, and tests swap `MediaClient` for a fake.
-- **Blocking JDBC in `suspend` handlers.** grpc-kotlin handlers are `suspend` functions, but JDBC blocks its thread. Each controller method wraps its service call in `withContext(Dispatchers.IO)`, the coroutine thread pool meant for blocking work. Service functions stay ordinary (non-`suspend`), so `@Transactional` works as usual: it binds the transaction to the current thread, and a coroutine can switch threads at every `suspend` point. For the same reason `MediaClient` uses grpc-java's **blocking** stub: it's called from those ordinary service functions.
-- **Validation** runs in the controller, so a bad request never reaches the service, and collects *every* broken rule, so a form can show all its errors at once. The rules are the "Rule" column of database-design.md §3.
+- **Each layer calls only the one below.** The controller is the only code that sees movie-api proto classes; `MediaClient` is the only code that sees media-api ones. Services and their tests work with plain Kotlin types, and tests mock `MediaClient` and the repositories.
+- **Blocking JDBC in `suspend` handlers.** grpc-kotlin handlers are `suspend` functions, but JDBC blocks its thread. The `rpc(request) { }` wrapper around each controller method runs the service call in `withContext(Dispatchers.IO)`, the coroutine thread pool meant for blocking work. Service functions stay ordinary (non-`suspend`), so `@Transactional` works as usual: it binds the transaction to the current thread, and a coroutine can switch threads at every `suspend` point. For the same reason `MediaClient` uses grpc-java's **blocking** stub: it's called from those ordinary service functions.
+- **Validation** rules are written on the `.proto` fields as `(buf.validate.field)` options, and [protovalidate](https://protovalidate.com) checks each request against them before the controller method runs. A bad request never reaches the service, and every broken rule is collected, so a form can show all its errors at once. The rules are the "Rule" column of database-design.md §3.
+  - Form fields use CEL rules with their own message (`"Title is required"`); ids, paging and the credit type use the built-in rules (`string.uuid`, `int32.gte`, `required`) and their default messages, since only a bug in the gateway breaks those.
+  - One rule can't be written in the `.proto`: a release date in the right shape for a day that doesn't exist (2025-02-30). `parseDate` in `ProtoMappers.kt` catches it and throws the same field error.
 - **The call to media-service happens after the commit.** `deleteMovie` isn't `@Transactional`, so the repository's delete commits on its own before `MediaClient` is called.
 
 | Repository | From Spring Data | Hand-written SQL (`@Query`) |
@@ -90,7 +91,7 @@ com.backend.media
 │   └── MovieClient.kt
 ├── controller/                     gRPC endpoints
 │   ├── MediaGrpcController.kt
-│   └── GrpcExceptionHandler.kt     exceptions → gRPC statuses
+│   └── GrpcExceptionHandler.kt     request validation; exceptions → gRPC statuses
 ├── exception/
 │   └── Exceptions.kt
 ├── service/                        the upload flow
@@ -99,7 +100,7 @@ com.backend.media
     └── FileStorage.kt
 ```
 
-media-service has no database; its only state is the files. As in movie-service, `MovieClient` is the only code that sees movie-api classes, and tests swap it for a fake that returns a ready-made result.
+media-service has no database; its only state is the files. As in movie-service, `MovieClient` is the only code that sees movie-api classes, and tests mock it.
 
 | Folder (under `~/.movie-app/media`) | Holds |
 |---|---|
@@ -125,7 +126,7 @@ sequenceDiagram
   participant V as movie-service
   B->>G: createMovie(input), title required, the rest optional
   G->>V: CreateMovie
-  V->>V: controller validates every field
+  V->>V: check the request against the .proto rules
   V->>V: INSERT INTO movies
   V-->>G: Movie
   G-->>B: Movie, then the browser opens its page
@@ -144,7 +145,7 @@ sequenceDiagram
   participant V as movie-service
   B->>G: updateMovie(id, input)
   G->>V: UpdateMovie
-  V->>V: controller validates every field
+  V->>V: check the request against the .proto rules
   V->>V: UPDATE movies … WHERE id = ?
   V-->>G: Movie
   G-->>B: Movie
@@ -281,7 +282,7 @@ The movies and people pages each have their own list and search box. With no sea
 
 ## 4. gRPC contracts
 
-UUIDs travel as strings and are parsed in the controller (a malformed one is `INVALID_ARGUMENT`). Nullable fields use proto3 `optional`, so "not set" and "empty" differ. Timestamps are `google.protobuf.Timestamp`; `release_date` is an ISO `YYYY-MM-DD` string.
+UUIDs travel as strings, checked by a `string.uuid` rule (a malformed one is `INVALID_ARGUMENT`). Nullable fields use proto3 `optional`, so "not set" and "empty" differ. Timestamps are `google.protobuf.Timestamp`; `release_date` is an ISO `YYYY-MM-DD` string.
 
 `movie-api` → `movie/movie_service.proto` (package `movie`):
 
@@ -304,9 +305,10 @@ UUIDs travel as strings and are parsed in the controller (a malformed one is `IN
 | `DeleteMovieFiles(movie_id)` | movie-service | idempotent |
 
 - Each gRPC service gets its own controller class (`MovieGrpcController`, `PersonGrpcController`, `CreditGrpcController`, `MediaGrpcController`).
-- `CreditType`'s 0 value means "not set", and is rejected as `INVALID_ARGUMENT`, so a forgotten field can't pass as a real value.
+- `CreditType`'s 0 value means "not set", and the `required` rule rejects it as `INVALID_ARGUMENT`, so a forgotten field can't pass as a real value.
+- Both contracts import `buf/validate/validate.proto`. It's inside the protovalidate jar, which the protobuf Gradle plugin unpacks for `protoc`.
 - Each service depends on the other's `-api` module for its client stubs.
-- The gateway keeps a copy of both `.proto` files in `gateway/proto`, which must be re-copied when a contract changes. With separate teams, it would install them as a versioned package instead.
+- The gateway keeps a copy of both `.proto` files in `gateway/proto`, which must be re-copied when a contract changes. With separate teams, it would install them as a versioned package instead. It also keeps a copy of `buf/validate/validate.proto`, because the contracts import it; the gateway only needs it to parse them, and never checks the rules.
 
 ---
 
@@ -423,10 +425,10 @@ Every gRPC call has a deadline: 5 s for normal calls; `UploadFile` and `ReadFile
 | A service unreachable, or a deadline passed | `UNAVAILABLE` / `DEADLINE_EXCEEDED` | `SERVICE_UNAVAILABLE` | "Something went wrong, try again" |
 | Anything else | `INTERNAL` | `INTERNAL_SERVER_ERROR` | a generic message; details only in the logs |
 
-- In each Kotlin service, `GrpcExceptionHandler.kt` has an `rpc { }` wrapper around every controller method. It turns exceptions into statuses, so controllers and services just throw `ValidationException`, `NotFoundException` and so on. Spring's own exception handling can't do this, because grpc-kotlin catches exceptions inside the coroutine.
-- Field errors travel in the status's trailers: one binary `field-error-bin` entry per broken rule, as `field=message`.
-  - **Before, with a text `field-error` trailer:** the gateway's Node HTTP/2 client joined repeated trailers into one value with commas. A blank title and a bad runtime reached the browser as one error on `title`, with the message `Title is required, runtimeMinutes=Runtime must be 1 to 1000 minutes`. Splitting on commas isn't safe, because a message can contain one.
-  - **After, with a binary `-bin` trailer:** gRPC encodes each value in base64, which has no commas, so grpc-js splits the joined value back apart. The same request gives one error per field.
+- In each Kotlin service, `GrpcExceptionHandler.kt` has an `rpc(request) { }` wrapper around every controller method. It validates the request, then turns exceptions into statuses, so controllers and services just throw `ValidationException`, `NotFoundException` and so on. Spring's own exception handling can't do this, because grpc-kotlin catches exceptions inside the coroutine. media-service's `UploadFile` is a stream, so it validates each message as it arrives.
+- Field errors use Google's [rich error model](https://grpc.io/docs/guides/error/#richer-error-model): the status carries a `google.rpc.Status` whose details hold a `google.rpc.BadRequest`, with one field violation per broken rule. gRPC sends it in the `grpc-status-details-bin` trailer.
+  - The field is the proto field's JSON name (`releaseDate`), which is also the GraphQL input's field name.
+  - The gateway decodes the trailer with protobufjs, using `status.proto` and `error_details.proto` from the `google-proto-files` package, and turns each violation into a `fieldErrors` entry.
 - Database errors are matched by **constraint name** (`pk_credits`, `fk_credits_person_id`, …), which is why the constraints are named. `CreditService` does the matching, because it knows the credit type the message needs.
 - When media-service gets an error from `AttachArtwork`, it passes `NOT_FOUND` on with its message and turns anything else into `UNAVAILABLE`.
 

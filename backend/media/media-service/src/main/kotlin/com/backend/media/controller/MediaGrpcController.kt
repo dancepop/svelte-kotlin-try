@@ -28,7 +28,8 @@ import java.util.UUID
 private const val CHUNK_BYTES = 64 * 1024
 
 /**
- * gRPC entry point for media-service (the gRPC equivalent of a REST controller).
+ * gRPC entry point for media-service (the gRPC equivalent of a REST controller). Each request message is checked
+ * against the rules in the .proto with [requireValid] before it's used.
  * Spring Boot registers every BindableService bean with the gRPC server.
  */
 @GrpcService
@@ -43,10 +44,11 @@ class MediaGrpcController(
         try {
             // collect only asks for the next message once this one is written, which is the back-pressure.
             requests.collect { request ->
+                requireValid(request)
                 when (request.payloadCase) {
                     UploadFileRequest.PayloadCase.MOVIE_ID -> {
                         if (upload != null) throw invalidStream("Only the first message can be the movie id")
-                        upload = uploadService.begin(parseMovieId(request.movieId))
+                        upload = uploadService.begin(UUID.fromString(request.movieId))
                     }
                     UploadFileRequest.PayloadCase.CHUNK -> {
                         val current = upload ?: throw invalidStream("The first message must be the movie id")
@@ -91,14 +93,9 @@ class MediaGrpcController(
         }
 
     override suspend fun deleteMovieFiles(request: DeleteMovieFilesRequest): Empty = rpc {
-        storage.deleteMovieFolder(parseMovieId(request.movieId))
+        requireValid(request)
+        storage.deleteMovieFolder(UUID.fromString(request.movieId))
         Empty.getDefaultInstance()
-    }
-
-    private fun parseMovieId(value: String): UUID = try {
-        UUID.fromString(value)
-    } catch (_: IllegalArgumentException) {
-        throw ValidationException("movieId", "Not a valid id")
     }
 
     private fun invalidStream(message: String) = ValidationException("file", message)

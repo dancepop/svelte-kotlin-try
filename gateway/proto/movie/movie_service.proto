@@ -3,6 +3,7 @@ syntax = "proto3";
 // Owned by the Movie team.
 package movie;
 
+import "buf/validate/validate.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -10,7 +11,11 @@ option java_multiple_files = true;
 option java_package = "com.backend.movie.api";
 
 // UUIDs travel as strings. `optional` marks nullable fields, so "not set" and "empty" differ.
-// Each enum's 0 value means "not set", which the service rejects, so a forgotten field can't pass as a real value.
+// Each enum's 0 value means "not set", which the rules reject, so a forgotten field can't pass as a real value.
+//
+// The (buf.validate.field) options are the request rules. movie-service checks every request against them
+// with protovalidate before doing anything. A rule on an `optional` field only applies when it's set.
+// Form fields use CEL rules with their own message, which the browser shows next to the field.
 
 service MovieService {
   rpc ListMovies(ListMoviesRequest) returns (ListMoviesResponse);
@@ -57,18 +62,28 @@ message Movie {
 }
 
 message MovieFields {
-  string title = 1;
-  optional string synopsis = 2;
-  optional string release_date = 3;
-  optional int32 runtime_minutes = 4;
+  string title = 1 [
+    (buf.validate.field).cel = {id: "title.required", message: "Title is required", expression: "this.matches(r'\\S')"},
+    (buf.validate.field).cel = {id: "title.max_len", message: "Title must be 200 characters or fewer", expression: "this.size() <= 200"}
+  ];
+  optional string synopsis = 2 [
+    (buf.validate.field).cel = {id: "synopsis.max_len", message: "Synopsis must be 5000 characters or fewer", expression: "this.size() <= 5000"}
+  ];
+  // Only the shape is checked here; movie-service also rejects days that don't exist, like 2025-02-30.
+  optional string release_date = 3 [
+    (buf.validate.field).cel = {id: "release_date.format", message: "Release date must be a real date in the format YYYY-MM-DD", expression: "this.matches(r'^\\d{4}-\\d{2}-\\d{2}$')"}
+  ];
+  optional int32 runtime_minutes = 4 [
+    (buf.validate.field).cel = {id: "runtime_minutes.range", message: "Runtime must be 1 to 1000 minutes", expression: "this >= 1 && this <= 1000"}
+  ];
 }
 
 message ListMoviesRequest {
   string query = 1;
   string cast_name = 2;
   string creator_name = 3;
-  int32 page = 4;
-  int32 page_size = 5;
+  int32 page = 4 [(buf.validate.field).int32.gte = 0];
+  int32 page_size = 5 [(buf.validate.field).int32 = {gte: 1, lte: 100}];
 }
 
 message ListMoviesResponse {
@@ -77,24 +92,25 @@ message ListMoviesResponse {
 }
 
 message GetMovieRequest {
-  string id = 1;
+  string id = 1 [(buf.validate.field).string.uuid = true];
 }
 
+// `required`: without it, missing fields would skip the rules inside them.
 message CreateMovieRequest {
-  MovieFields fields = 1;
+  MovieFields fields = 1 [(buf.validate.field).required = true];
 }
 
 message UpdateMovieRequest {
-  string id = 1;
-  MovieFields fields = 2;
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  MovieFields fields = 2 [(buf.validate.field).required = true];
 }
 
 message DeleteMovieRequest {
-  string id = 1;
+  string id = 1 [(buf.validate.field).string.uuid = true];
 }
 
 message AttachArtworkRequest {
-  string movie_id = 1;
+  string movie_id = 1 [(buf.validate.field).string.uuid = true];
   string storage_key = 2;
 }
 
@@ -111,14 +127,19 @@ message Person {
 }
 
 message PersonFields {
-  string name = 1;
-  optional string bio = 2;
+  string name = 1 [
+    (buf.validate.field).cel = {id: "name.required", message: "Name is required", expression: "this.matches(r'\\S')"},
+    (buf.validate.field).cel = {id: "name.max_len", message: "Name must be 200 characters or fewer", expression: "this.size() <= 200"}
+  ];
+  optional string bio = 2 [
+    (buf.validate.field).cel = {id: "bio.max_len", message: "Bio must be 5000 characters or fewer", expression: "this.size() <= 5000"}
+  ];
 }
 
 message ListPeopleRequest {
   string query = 1;
-  int32 page = 2;
-  int32 page_size = 3;
+  int32 page = 2 [(buf.validate.field).int32.gte = 0];
+  int32 page_size = 3 [(buf.validate.field).int32 = {gte: 1, lte: 100}];
 }
 
 message ListPeopleResponse {
@@ -127,30 +148,31 @@ message ListPeopleResponse {
 }
 
 message GetPersonRequest {
-  string id = 1;
+  string id = 1 [(buf.validate.field).string.uuid = true];
 }
 
 message CreatePersonRequest {
-  PersonFields fields = 1;
+  PersonFields fields = 1 [(buf.validate.field).required = true];
 }
 
 message UpdatePersonRequest {
-  string id = 1;
-  PersonFields fields = 2;
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  PersonFields fields = 2 [(buf.validate.field).required = true];
 }
 
 message DeletePersonRequest {
-  string id = 1;
+  string id = 1 [(buf.validate.field).string.uuid = true];
 }
 
 message CreditRequest {
-  string movie_id = 1;
-  string person_id = 2;
-  CreditType type = 3;
+  string movie_id = 1 [(buf.validate.field).string.uuid = true];
+  string person_id = 2 [(buf.validate.field).string.uuid = true];
+  // `required` on an enum rejects 0 (not set); `defined_only` rejects numbers the enum doesn't list.
+  CreditType type = 3 [(buf.validate.field).required = true, (buf.validate.field).enum.defined_only = true];
 }
 
 message ListCreditsByMoviesRequest {
-  repeated string movie_ids = 1;
+  repeated string movie_ids = 1 [(buf.validate.field).repeated = {max_items: 100, items: {string: {uuid: true}}}];
 }
 
 message MovieCredit {
@@ -165,7 +187,7 @@ message ListCreditsByMoviesResponse {
 }
 
 message ListCreditsByPeopleRequest {
-  repeated string person_ids = 1;
+  repeated string person_ids = 1 [(buf.validate.field).repeated = {max_items: 100, items: {string: {uuid: true}}}];
 }
 
 message PersonCredit {

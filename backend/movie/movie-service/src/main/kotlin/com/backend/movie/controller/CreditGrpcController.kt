@@ -11,40 +11,39 @@ import com.backend.movie.api.listCreditsByPeopleResponse
 import com.backend.movie.service.CreditService
 import com.google.protobuf.Empty
 import org.springframework.grpc.server.service.GrpcService
+import java.util.UUID
 
-/** gRPC entry point for credits. Rejects invalid values and converts between proto and Kotlin types; the business logic is in [CreditService]. */
+/** gRPC entry point for credits. [rpc] checks each request against the rules in the .proto, then this converts between proto and Kotlin types; the business logic is in [CreditService]. */
 @GrpcService
 class CreditGrpcController(
     private val creditService: CreditService,
 ) : CreditServiceGrpcKt.CreditServiceCoroutineImplBase() {
 
-    override suspend fun addCredit(request: CreditRequest): Empty = rpc {
+    override suspend fun addCredit(request: CreditRequest): Empty = rpc(request) {
         creditService.addCredit(
-            parseUuid(request.movieId, "movieId"),
-            parseUuid(request.personId, "personId"),
+            UUID.fromString(request.movieId),
+            UUID.fromString(request.personId),
             request.type.toEnum(),
         )
         Empty.getDefaultInstance()
     }
 
-    override suspend fun removeCredit(request: CreditRequest): Empty = rpc {
+    override suspend fun removeCredit(request: CreditRequest): Empty = rpc(request) {
         creditService.removeCredit(
-            parseUuid(request.movieId, "movieId"),
-            parseUuid(request.personId, "personId"),
+            UUID.fromString(request.movieId),
+            UUID.fromString(request.personId),
             request.type.toEnum(),
         )
         Empty.getDefaultInstance()
     }
 
-    override suspend fun listCreditsByMovies(request: ListCreditsByMoviesRequest): ListCreditsByMoviesResponse = rpc {
-        requireValid(idCountErrors("movieIds", request.movieIdsCount))
-        val rows = creditService.listCreditsByMovies(request.movieIdsList.map { parseUuid(it, "movieIds") })
+    override suspend fun listCreditsByMovies(request: ListCreditsByMoviesRequest): ListCreditsByMoviesResponse = rpc(request) {
+        val rows = creditService.listCreditsByMovies(request.movieIdsList.map { UUID.fromString(it) })
         listCreditsByMoviesResponse { credits += rows.map { it.toProto() } }
     }
 
-    override suspend fun listCreditsByPeople(request: ListCreditsByPeopleRequest): ListCreditsByPeopleResponse = rpc {
-        requireValid(idCountErrors("personIds", request.personIdsCount))
-        val rows = creditService.listCreditsByPeople(request.personIdsList.map { parseUuid(it, "personIds") })
+    override suspend fun listCreditsByPeople(request: ListCreditsByPeopleRequest): ListCreditsByPeopleResponse = rpc(request) {
+        val rows = creditService.listCreditsByPeople(request.personIdsList.map { UUID.fromString(it) })
         listCreditsByPeopleResponse { credits += rows.map { it.toProto() } }
     }
 }

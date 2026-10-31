@@ -1,6 +1,6 @@
 package com.backend.media.exception
 
-/** A broken rule, such as a malformed movie id. [field] tells the form where to show the message. */
+/** A broken rule, such as a malformed movie id or chunks in the wrong order. [field] tells the form where to show the message. */
 class ValidationException(val field: String, message: String) : RuntimeException(message)
 
 class NotFoundException(message: String) : RuntimeException(message)

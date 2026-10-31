@@ -15,7 +15,7 @@ private const val DEADLINE_SECONDS = 5L
 
 /**
  * The call to movie-service. Services depend on this interface, so they never see movie-api classes
- * and tests can swap in a fake.
+ * and tests can mock it.
  */
 interface MovieClient {
     /** Records stored artwork on its movie. Returns the replaced file's key, or null if nothing was replaced. */

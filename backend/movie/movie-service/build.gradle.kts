@@ -24,7 +24,10 @@ dependencies {
     testImplementation(libs.spring.boot.starter.grpc.server.test)
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.kotlinx.coroutines.test)
+    // @DataJdbcTest: starts only the repositories and Flyway, for the repository tests.
+    testImplementation(libs.spring.boot.starter.data.jdbc.test)
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.mockk)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

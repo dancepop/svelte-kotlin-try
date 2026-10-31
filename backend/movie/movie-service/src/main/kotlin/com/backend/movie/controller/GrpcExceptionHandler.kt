@@ -1,11 +1,19 @@
 package com.backend.movie.controller
 
+import build.buf.protovalidate.ValidatorFactory
+import build.buf.protovalidate.Violation
+import build.buf.validate.FieldPath
 import com.backend.movie.exception.AlreadyExistsException
+import com.backend.movie.exception.FieldError
 import com.backend.movie.exception.NotFoundException
 import com.backend.movie.exception.ValidationException
-import io.grpc.Metadata
+import com.google.protobuf.Any
+import com.google.protobuf.Message
+import com.google.rpc.BadRequest
+import com.google.rpc.Code
 import io.grpc.Status
 import io.grpc.StatusException
+import io.grpc.protobuf.StatusProto
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,18 +21,16 @@ import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("com.backend.movie.controller.GrpcExceptionHandler")
 
-// Sent once per broken rule as "field=message", so the gateway can show each message next to its field.
-// As a text trailer, the gateway's Node HTTP/2 client joined repeats into one value ("title=..., runtimeMinutes=..."),
-// which can't be split safely because a message can contain a comma. As a binary ("-bin") trailer, each value is
-// base64, which has no commas, so grpc-js splits them back into one entry per broken rule.
-private val FIELD_ERROR_KEY = Metadata.Key.of("field-error-bin", Metadata.BINARY_BYTE_MARSHALLER)
+// Reads the (buf.validate.field) rules from each message's descriptor the first time it sees that message type.
+private val validator = ValidatorFactory.newBuilder().build()
 
 /**
- * Wraps every controller method. Runs blocking work on the coroutine pool meant for it, and turns exceptions
- * into gRPC statuses. Spring's exception handling can't do this here: grpc-kotlin catches exceptions inside
- * the coroutine, so they'd reach the client as UNKNOWN.
+ * Wraps every controller method. Checks [request] against the rules in its .proto, runs blocking work on the
+ * coroutine pool meant for it, and turns exceptions into gRPC statuses. Spring's exception handling can't do this
+ * here: grpc-kotlin catches exceptions inside the coroutine, so they'd reach the client as UNKNOWN.
  */
-internal suspend fun <T> rpc(block: () -> T): T = try {
+internal suspend fun <T> rpc(request: Message, block: () -> T): T = try {
+    requireValid(request)
     withContext(Dispatchers.IO) { block() }
 } catch (e: CancellationException) {
     // The client went away or its deadline passed. This must stay a cancellation.
@@ -33,12 +39,24 @@ internal suspend fun <T> rpc(block: () -> T): T = try {
     throw toStatusException(e)
 }
 
+private fun requireValid(request: Message) {
+    val violations = validator.validate(request).violations
+    if (violations.isNotEmpty()) throw ValidationException(violations.map { it.toFieldError() })
+}
+
+private fun Violation.toFieldError(): FieldError {
+    val violation = toProto()
+    return FieldError(fieldNameOf(violation.field), violation.message)
+}
+
+// The path ends at the broken field (fields.release_date). The gateway and the forms use its camelCase name (releaseDate).
+private fun fieldNameOf(path: FieldPath): String {
+    val name = path.elementsList.lastOrNull()?.fieldName.orEmpty()
+    return name.split('_').mapIndexed { i, part -> if (i == 0) part else part.replaceFirstChar(Char::uppercase) }.joinToString("")
+}
+
 internal fun toStatusException(e: Exception): StatusException = when (e) {
-    is ValidationException -> {
-        val trailers = Metadata()
-        e.fieldErrors.forEach { trailers.put(FIELD_ERROR_KEY, "${it.field}=${it.message}".toByteArray()) }
-        StatusException(Status.INVALID_ARGUMENT.withDescription(e.message), trailers)
-    }
+    is ValidationException -> invalidArgument(e.message.orEmpty(), e.fieldErrors)
     is NotFoundException -> StatusException(Status.NOT_FOUND.withDescription(e.message))
     is AlreadyExistsException -> StatusException(Status.ALREADY_EXISTS.withDescription(e.message))
     else -> {
@@ -46,4 +64,22 @@ internal fun toStatusException(e: Exception): StatusException = when (e) {
         logger.error("Unexpected error in a gRPC call", e)
         StatusException(Status.INTERNAL.withDescription("Something went wrong"))
     }
+}
+
+/**
+ * Google's standard error model: a google.rpc.Status holding a BadRequest with one entry per broken rule.
+ * gRPC sends it in the grpc-status-details-bin trailer, where the gateway reads it back.
+ */
+private fun invalidArgument(message: String, fieldErrors: List<FieldError>): StatusException {
+    val badRequest = BadRequest.newBuilder()
+        .addAllFieldViolations(
+            fieldErrors.map { BadRequest.FieldViolation.newBuilder().setField(it.field).setDescription(it.message).build() },
+        )
+        .build()
+    val status = com.google.rpc.Status.newBuilder()
+        .setCode(Code.INVALID_ARGUMENT_VALUE)
+        .setMessage(message)
+        .addDetails(Any.pack(badRequest))
+        .build()
+    return StatusProto.toStatusException(status)
 }

@@ -10,6 +10,8 @@ protobuf-plugin = "0.10.0"
 protobuf = "4.36.2"
 grpc = "1.84.1"
 grpc-kotlin = "1.5.0"
+protovalidate = "1.3.0"
+mockk = "1.14.11"
 
 [libraries]
 # Libraries without a version get it from the Spring Boot BOM.
@@ -27,13 +29,19 @@ grpc-protobuf = { module = "io.grpc:grpc-protobuf" }
 grpc-stub = { module = "io.grpc:grpc-stub" }
 grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpc-kotlin" }
 protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin" }
+# Checks a message against the (buf.validate.field) rules in its .proto. The jar also holds buf/validate/validate.proto,
+# which the protobuf plugin unpacks so the contracts can import it.
+protovalidate = { module = "build.buf:protovalidate", version.ref = "protovalidate" }
 
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
 kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+spring-boot-starter-data-jdbc-test = { module = "org.springframework.boot:spring-boot-starter-data-jdbc-test" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+# Mocks for Kotlin (Kotlin's answer to Mockito). Not in the Spring Boot BOM, so it needs a version.
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 
 # protoc and its plugins: executables downloaded by the protobuf Gradle plugin, not runtime dependencies.
 protoc-compiler = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }

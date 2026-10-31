@@ -6,6 +6,7 @@ import type { GrpcServiceConfig } from "../config.js";
 import { toGraphQLError } from "../errors.js";
 
 // Physical copies of the contracts in each backend -api module, so they must be re-copied when a contract changes.
+// buf/validate/validate.proto is there because the contracts import it (it comes from the protovalidate jar).
 // With separate teams this should be a package install: each -api module publishes a versioned package.
 const PROTO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../proto"); // from src/grpc or dist/grpc
 

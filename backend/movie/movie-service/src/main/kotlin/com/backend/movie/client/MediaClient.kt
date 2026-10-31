@@ -11,7 +11,7 @@ private const val DEADLINE_SECONDS = 5L
 
 /**
  * The call to media-service. Services depend on this interface, so they never see media-api classes
- * and tests can swap in a fake.
+ * and tests can mock it.
  */
 interface MediaClient {
     fun deleteMovieFiles(movieId: UUID)

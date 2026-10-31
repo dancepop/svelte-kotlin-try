@@ -70,7 +70,7 @@ Init scripts only run on an empty volume, and Flyway refuses to start if an appl
   - Ids cross services (media-service sends movie ids) and show up in URLs and file paths.
   - v7 starts with a millisecond timestamp, so new ids are always larger than old ones: inserts go to the end of the index instead of random pages, and sorting by `id` is roughly sorting by creation time. The rest is random, so ids still can't be guessed and don't reveal how many rows exist; they do reveal when a row was created, which is fine for movies and people.
   - The cost is a larger index than `bigint`, which doesn't matter at this size.
-- **No `CHECK` constraints; value rules live in the application.** Lengths and allowed values are validated in movie-service, where they're unit-tested and can change without a migration. The database keeps only structure: types, `NOT NULL`, keys and foreign keys.
+- **No `CHECK` constraints; value rules live in the application.** Lengths and allowed values are rules in movie-service's `.proto` contract, checked before a request reaches the database. There they're unit-tested and can change without a migration. The database keeps only structure: types, `NOT NULL`, keys and foreign keys.
 - **Except uniqueness.** A primary key on `credits` isn't a value rule: it depends on *other rows*. The application can't enforce it safely, because two concurrent requests can both check "no duplicate yet" and both insert. Only the database sees both inserts and rejects the second.
 - **`text` instead of `CREATE TYPE ... AS ENUM`.** Removing a value from a Postgres ENUM is not supported at all; with `text`, changing the allowed values is an application change.
 - **`text` instead of `varchar(n)`.** In Postgres they perform the same, and length limits are checked by the application.
@@ -227,7 +227,7 @@ CREATE INDEX idx_credits_person_id ON credits (person_id);
 | One user + schema, both named `movie` | movie-service connects as `movie`/`movie` to `jdbc:postgresql://localhost:5433/app`. The default `search_path` handles the schema. media-service gets **no** datasource and no JDBC/Flyway dependencies. |
 | Flyway | Only movie-service: `spring.flyway.schemas=movie`, migrations in `src/main/resources/db/migration`. |
 | `artwork_key` stores relative paths, not URLs | URLs are built when data is read, so storage can move (local folder → S3) without touching data. |
-| No `CHECK`s | movie-service validates every value rule on its data (title not blank, lengths, allowed `credit_type`) before writing and returns INVALID_ARGUMENT. These rules get unit tests with edge cases. |
+| No `CHECK`s | movie-service checks every value rule on its data (title not blank, lengths, allowed `credit_type`) against the `.proto` rules before writing, and returns INVALID_ARGUMENT. These rules get unit tests with edge cases. |
 | Named `pk_`/`fk_` constraints | The backend maps constraint names to friendly errors, e.g. `pk_credits` → ALREADY_EXISTS ("Already credited as cast on this movie"), `fk_credits_movie_id` → NOT_FOUND. |
 | `updated_at` | Set by the application on update. There's no database trigger, so the logic stays in tested Kotlin. |
 

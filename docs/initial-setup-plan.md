@@ -25,7 +25,7 @@ Browser → GraphQL → **Apollo Server + Express** (Node/TS) → gRPC → Kotli
 - Each service has an **`-api` module** holding its `.proto` files and generated stubs. This is the team's published contract.
 - Consumers depend on the `-api` module, never the `-service` module (e.g. `implementation(project(":movie:movie-api"))`).
 - `-api` modules apply `maven-publish`: `./gradlew :movie:movie-api:publishToMavenLocal` produces a jar with the `.proto` files inside, which is what a multi-repo company would push to a registry.
-- The gateway keeps its own copy of the `.proto` files in `gateway/proto`, which must be re-copied when a contract changes. With separate teams, it would install them as a versioned package instead.
+- The gateway keeps its own copy of the `.proto` files in `gateway/proto`, which must be re-copied when a contract changes. With separate teams, it would install them as a versioned package instead. It also keeps a copy of `buf/validate/validate.proto`, because the contracts import it.
 - **Why the contract isn't merged into the app module:** the published jar would then be the whole Spring Boot app. Also, when protobuf and Spring Boot share a module, Spring Boot 4.1's Gradle plugin auto-configures protobuf (`ProtobufPluginAction`), which clashes with our own `grpc` generator setup. Keeping `-api` free of Spring Boot avoids both problems.
 
 ---
@@ -115,11 +115,13 @@ svelte-kotlin-try/
   - `grpc`: Java stubs, which the Kotlin stubs build on;
   - `grpckt`: **coroutine** stubs, so service methods are `suspend fun`;
   - `kotlin` (built in): Kotlin DSL builders such as `movie { title = "Heat" }`.
+- **Request rules** are `(buf.validate.field)` options in the `.proto` files, checked with protovalidate (`build.buf:protovalidate`, an `api` dependency of each `-api` module). Its jar also holds `buf/validate/validate.proto`, which the protobuf plugin unpacks so the contracts can import it.
+- **Tests:** JUnit 5 with kotlin.test assertions, MockK for mocks, and Testcontainers for the repository tests, which need Docker. The plan is in [unit-test-plan.md](unit-test-plan.md).
 - **`-service` modules** are Spring Boot apps (`spring-boot-starter-grpc-server`). Their gRPC controllers (`controller/`) extend the generated `...CoroutineImplBase`, one per gRPC service. Spring Boot also registers the standard `grpc.health.v1.Health` service automatically.
 - **Known warning:** `Configuration.setVisible(boolean) has been deprecated` comes from the protobuf plugin itself (`ProtobufPlugin.groovy`), even in 0.10.0. It is harmless until Gradle 11.
 
 ```bash
-./gradlew build                                  # compile + test everything
+./gradlew build                                  # compile + test everything (Docker must be running)
 ./gradlew :movie:movie-service:bootRun           # movie-service on :9091
 ./gradlew :media:media-service:bootRun           # media-service on :9092
 ./gradlew :movie:movie-api:publishToMavenLocal   # "export" the movie contract jar
@@ -129,7 +131,7 @@ svelte-kotlin-try/
 
 ## 5. Gateway (`gateway/`)
 
-- **Stack:** Apollo Server 5 + `@as-integrations/express5`, Express 5, `graphql` **16** (Apollo Server 5 doesn't support 17 yet), `@grpc/grpc-js` + `@grpc/proto-loader`, TypeScript, Vitest.
+- **Stack:** Apollo Server 5 + `@as-integrations/express5`, Express 5, `graphql` **16** (Apollo Server 5 doesn't support 17 yet), `@grpc/grpc-js` + `@grpc/proto-loader`, `protobufjs` + `google-proto-files` (to decode error details), TypeScript, Vitest.
 - `proto-loader` reads the `.proto` files at runtime from `gateway/proto`, so there's no gRPC code-generation step.
 - **Files:**
   - `config.ts`: env vars;
@@ -138,7 +140,7 @@ svelte-kotlin-try/
   - `schema.ts` + `resolvers.ts`: the GraphQL API;
   - `mappers.ts`: gRPC responses → GraphQL types;
   - `loaders.ts`: batches credit lookups;
-  - `errors.ts`: gRPC errors → GraphQL errors;
+  - `errors.ts`: gRPC errors → GraphQL errors, including the field errors in `grpc-status-details-bin`;
   - `upload.ts`: forwards an upload to media-service;
   - `media-route.ts`: `GET /media/*`;
   - `app.ts`: Express + Apollo + `/healthz`;
@@ -154,7 +156,7 @@ svelte-kotlin-try/
   - `$lib` is `#lib` (Node subpath imports), and imports include the extension: `#lib/api/graphql.ts`;
   - env vars are declared in `src/env.ts` (`defineEnvVars`) and imported from `$app/env/public`. `GRAPHQL_URL` is read at server start.
 - **Tests:** Vitest unit tests in Node, plus component tests in headless Chromium via Playwright (run `npx playwright install chromium` once).
-- **GraphQL calls** use a small `fetch` helper. Uploads will use `XMLHttpRequest`, to get `upload.onprogress` events.
+- **GraphQL calls** use a small `fetch` helper. Uploads use `XMLHttpRequest`, to get `upload.onprogress` events.
 
 ---
 
