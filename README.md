@@ -13,8 +13,8 @@ Design docs:
 ## Architecture
 
 ```
-Browser ──GraphQL──▶ gateway (Apollo Server + Express, :4000) ──gRPC──▶ movie-service (:9091)  movies, cast & creators
-                                                               └─gRPC──▶ media-service (:9092)  artwork files: uploads, streaming
+Browser ──GraphQL──▶ gateway (Apollo Server + Express, :4000) ──gRPC──▶ movie-app (:9091)  movies, cast & creators
+                                                               └─gRPC──▶ media-app (:9092)  artwork files: uploads, streaming
 ```
 
 | Folder | What | Stack |
@@ -24,7 +24,7 @@ Browser ──GraphQL──▶ gateway (Apollo Server + Express, :4000) ──gR
 | `backend/` | Gradle multi-project with both services | Kotlin, Spring Boot 4.1, gRPC (coroutine stubs) |
 | `infra/` | Postgres init script: the `movie` role, schema and `pg_trgm` | Postgres 18 |
 
-Each service owns its gRPC contract in an `-api` module (e.g. `backend/movie/movie-api/src/main/proto`), which other services consume. The gateway keeps its own copy in `gateway/proto`, so copy the file there after changing a contract.
+Each service owns its gRPC contract in a `-proto` module (e.g. `backend/movie/movie-proto/src/main/proto`), which other services consume. The gateway keeps its own copy in `gateway/proto`, so copy the file there after changing a contract.
 
 ## Run
 
@@ -33,12 +33,12 @@ Requires Docker for Postgres, a JDK (17+, used to run Gradle; JDK 25 is download
 ```bash
 # 1. Postgres on port 5433. The init script creates the movie role and schema.
 docker compose up
-# Or, to also add sample movies and people to an empty database once movie-service has created the tables:
+# Or, to also add sample movies and people to an empty database once movie-app has created the tables:
 docker compose --profile seed up
 
 # 2. Backend services. Artwork is stored in ~/.movie-app/media.
-cd backend && ./gradlew :movie:movie-service:bootRun
-cd backend && ./gradlew :media:media-service:bootRun
+cd backend && ./gradlew :movie:movie-app:bootRun
+cd backend && ./gradlew :media:media-app:bootRun
 
 # 3. Gateway
 cd gateway && npm install && npm run dev        # http://localhost:4000/graphql

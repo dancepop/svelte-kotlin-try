@@ -155,7 +155,7 @@ const movies = new Loader(() =>
 |---|---|---|
 | **Listing, searching** | Spinner on first load; afterwards the previous results stay, dimmed, with a spinner | `ErrorMessage` with Retry |
 | **Opening a movie or person** | Spinner | `ErrorMessage` with Retry, or "not found" when the query returns `null` |
-| **Creating, updating** | Button disabled, reading "Saving…" | Messages beside the fields, plus a banner for other errors |
+| **Creating, updating** | Button disabled, reading "Saving…" | Banner above the form |
 | **Deleting** | Native `confirm()`, then button disabled, reading "Deleting…". For a person, the confirmation says they'll be removed from their movies | Banner on the page |
 | **Uploading artwork** | Progress bar with a percentage; "Finishing…" at 100% until the response arrives | Message under the file input |
 | **Adding, removing credits** | That row's button disabled | Message beside the list |
@@ -166,11 +166,11 @@ Empty results show "No movies found" or "No people found".
 
 ## 6. Errors
 
-`graphqlRequest` throws a `GraphQLRequestError`. Its message joins every error's message, and it carries `code` and `fieldErrors` from the first error, for the forms. `formErrors` splits a failed save into messages for the form's fields and a banner for anything else.
+`graphqlRequest` throws a `GraphQLRequestError`. Its message joins every error's message, and it carries the first error's `code`. Forms show the message in a banner.
 
 | Gateway code | What the user sees |
 |---|---|
-| `BAD_USER_INPUT` | Each entry in `fieldErrors` beside its field (`title`, `synopsis`, `releaseDate`, `runtimeMinutes`, `name`, `bio`), otherwise a banner |
+| `BAD_USER_INPUT` | The gateway's message, listing every broken rule |
 | `NOT_FOUND`, `CONFLICT` | The gateway's message, such as a duplicate credit |
 | `SERVICE_UNAVAILABLE`, `INTERNAL_SERVER_ERROR` | "Something went wrong, try again" |
 | Gateway unreachable | "Could not reach the gateway. Is it running?" |
@@ -179,7 +179,7 @@ Empty results show "No movies found" or "No people found".
 
 ## 7. Forms
 
-- **The server owns the rules.** The rules in the `.proto` files decide what's valid, and their messages appear beside the fields. The form only adds browser hints: `required` and `maxlength` on the title, `maxlength` on the synopsis, `type="date"`, and `type="number"` with `min` and `max` on the runtime. The person form has `required` and `maxlength` on the name and `maxlength` on the bio.
+- **The server enforces the rules.** The rules in the `.proto` files decide what's valid. A rejected save shows the server's message in a banner. The form adds browser checks: `required` and `maxlength` on the title, `maxlength` on the synopsis, `type="date"`, and `type="number"` with `min` and `max` on the runtime. The person form has `required` and `maxlength` on the name and `maxlength` on the bio.
 - **Empty fields are sent as `null`.** An empty `<input>` gives `""`, which would fail the date check. Saving always sends every field, because `updateMovie` and `updatePerson` replace them.
 - **Values stay in the form when saving fails,** so the user can correct them.
 

@@ -2,7 +2,7 @@ import DataLoader from "dataloader";
 import { type Clients, unary } from "./grpc/clients.js";
 import type { MovieCredit, PersonCredit } from "./grpc/types.js";
 
-// movie-service accepts at most this many ids in one call, the same as its largest page.
+// movie-app accepts at most this many ids in one call, the same as its largest page.
 const MAX_IDS_PER_CALL = 100;
 
 export interface Context {

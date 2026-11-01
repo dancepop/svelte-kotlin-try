@@ -1,0 +1,69 @@
+syntax = "proto3";
+package media;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/empty.proto";
+
+// Use multiple files or there will be an outerclass containing all messages
+option java_multiple_files = true;
+// import package path
+option java_package = "com.backend.media.api";
+
+// Seems a bit strange to have everything in 1 file to kill readability but the proto
+// language rules also don't allow inline fields so i'll follow google's style over at:
+// https://github.com/googleapis/googleapis/blob/master/google/pubsub/v1/pubsub.proto
+// Ideally should separate out some of these i feel. Design can be better but not
+// going to spend much time here.
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service MediaService {
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+  rpc ReadFile(ReadFileRequest) returns (stream ReadFileResponse);
+  // Deleting something that's already gone succeeds.
+  rpc DeleteMovieFiles(DeleteMovieFilesRequest) returns (google.protobuf.Empty);
+}
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+
+message FileInfo {
+  int64 total_size = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Requests and responses
+// ---------------------------------------------------------------------------
+
+message UploadFileRequest {
+  // The first message is the movie id; every later one is a chunk of the file hence oneof.
+  // The file is stored once the client ends the stream. A cancelled call stores nothing.
+  oneof payload {
+    string movie_id = 1 [(buf.validate.field).string.uuid = true];
+    bytes chunk = 2;
+  }
+}
+
+// For frontend to retrieve the artwork and display it.
+message UploadFileResponse {
+  string storage_key = 1;
+}
+
+message ReadFileRequest {
+  string storage_key = 1;
+}
+
+message ReadFileResponse {
+  // The first message is the file's info; every later one is a chunk of it hence oneof.
+  oneof payload {
+    FileInfo info = 1;
+    bytes chunk = 2;
+  }
+}
+
+message DeleteMovieFilesRequest {
+  string movie_id = 1 [(buf.validate.field).string.uuid = true];
+}

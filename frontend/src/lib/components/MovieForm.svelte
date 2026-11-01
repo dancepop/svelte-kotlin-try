@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { formErrors } from '#lib/api/graphql.ts';
+	import { errorMessage } from '#lib/api/graphql.ts';
 	import type { Movie, MovieInput } from '#lib/api/types.ts';
-
-	const FIELDS = ['title', 'synopsis', 'releaseDate', 'runtimeMinutes'];
 
 	let {
 		movie,
@@ -25,13 +23,11 @@
 	let runtimeMinutes = $state<number | null>(initial?.runtimeMinutes ?? null);
 
 	let saving = $state(false);
-	let fieldErrors = $state<Record<string, string>>({});
 	let banner = $state<string | null>(null);
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
 		saving = true;
-		fieldErrors = {};
 		banner = null;
 		try {
 			// An empty input gives "", which isn't a date, so empty fields are sent as null.
@@ -42,7 +38,7 @@
 				runtimeMinutes
 			});
 		} catch (error) {
-			({ fields: fieldErrors, banner } = formErrors(error, FIELDS));
+			banner = errorMessage(error);
 		} finally {
 			saving = false;
 		}
@@ -56,39 +52,18 @@
 
 	<div class="fieldset">
 		<label class="fieldset-legend" for="title">Title</label>
-		<input
-			id="title"
-			class="input w-full"
-			class:input-error={fieldErrors.title}
-			bind:value={title}
-			required
-			maxlength="200"
-		/>
-		{#if fieldErrors.title}<p class="text-error text-sm">{fieldErrors.title}</p>{/if}
+		<input id="title" class="input w-full" bind:value={title} required maxlength="200" />
 	</div>
 
 	<div class="fieldset">
 		<label class="fieldset-legend" for="synopsis">Synopsis</label>
-		<textarea
-			id="synopsis"
-			class="textarea w-full"
-			class:textarea-error={fieldErrors.synopsis}
-			rows="5"
-			bind:value={synopsis}
-			maxlength="5000"></textarea>
-		{#if fieldErrors.synopsis}<p class="text-error text-sm">{fieldErrors.synopsis}</p>{/if}
+		<textarea id="synopsis" class="textarea w-full" rows="5" bind:value={synopsis} maxlength="5000"
+		></textarea>
 	</div>
 
 	<div class="fieldset">
 		<label class="fieldset-legend" for="release-date">Release date</label>
-		<input
-			id="release-date"
-			type="date"
-			class="input w-full"
-			class:input-error={fieldErrors.releaseDate}
-			bind:value={releaseDate}
-		/>
-		{#if fieldErrors.releaseDate}<p class="text-error text-sm">{fieldErrors.releaseDate}</p>{/if}
+		<input id="release-date" type="date" class="input w-full" bind:value={releaseDate} />
 	</div>
 
 	<div class="fieldset">
@@ -97,14 +72,10 @@
 			id="runtime"
 			type="number"
 			class="input w-full"
-			class:input-error={fieldErrors.runtimeMinutes}
 			min="1"
 			max="1000"
 			bind:value={runtimeMinutes}
 		/>
-		{#if fieldErrors.runtimeMinutes}
-			<p class="text-error text-sm">{fieldErrors.runtimeMinutes}</p>
-		{/if}
 	</div>
 
 	<div class="mt-4 flex flex-wrap gap-2">

@@ -52,7 +52,7 @@ function sendFailure(error: grpc.ServiceError, res: Response) {
   if (error.code === grpc.status.NOT_FOUND) {
     res.sendStatus(404);
   } else if (error.code === grpc.status.UNAVAILABLE || error.code === grpc.status.DEADLINE_EXCEEDED) {
-    console.warn("media-service couldn't be reached:", error.message);
+    console.warn("media-app couldn't be reached:", error.message);
     res.sendStatus(503);
   } else {
     console.error("Unexpected error reading a file:", error);

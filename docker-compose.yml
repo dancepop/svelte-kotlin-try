@@ -7,7 +7,7 @@ services:
     image: postgres:18
     environment:
       POSTGRES_DB: app
-      # The superuser; only the init script uses it. movie-service connects as the movie role it creates.
+      # The superuser; only the init script uses it. movie-app connects as the movie role it creates.
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:

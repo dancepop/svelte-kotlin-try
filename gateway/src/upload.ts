@@ -7,7 +7,7 @@ import { serviceUnavailableError, toGraphQLError } from "./errors.js";
 
 const CHUNK_BYTES = 64 * 1024;
 
-/** Forwards the file to media-service as it arrives: the movie id, chunks, then `complete`. Resolves once it's stored. */
+/** Forwards the file to media-app as it arrives: the movie id, then chunks. Resolves once it's stored. */
 export async function uploadFile(media: GrpcClient, movieId: string, file: Readable): Promise<UploadFileResponse> {
   // The call's deadline is long, so without this a service that's down would keep the browser waiting for all of it.
   try {
@@ -23,7 +23,7 @@ export async function uploadFile(media: GrpcClient, movieId: string, file: Reada
   const call: grpc.ClientWritableStream<unknown> = media.uploadFile(
     options,
     (error: grpc.ServiceError | null, response: UploadFileResponse) => {
-      // media-service has answered, which can be early if it fails partway through.
+      // media-app has answered, which can be early if it fails partway through.
       stopSending.abort();
       if (error) reject(toGraphQLError(error));
       else resolve(response);
@@ -47,12 +47,10 @@ async function sendFile(call: grpc.ClientWritableStream<unknown>, movieId: strin
         }
       }
     }
-    if (!stop.aborted) {
-      call.write({ complete: true });
-      call.end();
-    }
+    // Ending the stream tells media-app the whole file was sent, so it stores it.
+    if (!stop.aborted) call.end();
   } catch {
-    // The browser disconnected or media-service answered.
+    // The browser disconnected or media-app answered.
     call.cancel();
   }
   // The browser may still be sending. Discarding the rest lets the request finish.

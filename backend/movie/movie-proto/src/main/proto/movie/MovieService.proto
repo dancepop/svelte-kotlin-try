@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+// Owned by the Movie team. Movies and their artwork.
+package movie;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// Use multiple files or there will be an outerclass containing all messages
+option java_multiple_files = true;
+// import package path
+option java_package = "com.backend.movie.api";
+
+// Seems a bit strange to have everything in 1 file to kill readability but the rpc
+// language rules also don't allow inline fields so i'll follow google's style over at:
+// https://github.com/googleapis/googleapis/blob/master/google/pubsub/v1/pubsub.proto
+// Ideally should separate out some of these i feel. Design can be better but not
+// going to spend much time here.
+
+// UUIDs travel as strings. `optional` marks nullable fields, so "not set" and "empty" differ.
+// The (buf.validate.field) options are the request rules. movie-app checks every request against them
+// with protovalidate before doing anything. A rule on an `optional` field only applies when it's set.
+// Form fields use CEL rules with their own message, which the browser shows next to the field.
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service MovieService {
+  rpc ListMovies(ListMoviesRequest) returns (ListMoviesResponse);
+  rpc GetMovie(GetMovieRequest) returns (Movie);
+  rpc CreateMovie(CreateMovieRequest) returns (Movie);
+  rpc UpdateMovie(UpdateMovieRequest) returns (Movie);
+  rpc DeleteMovie(DeleteMovieRequest) returns (google.protobuf.Empty);
+  // Called by media-app once artwork is stored. Returns the replaced file's key, for it to delete.
+  rpc AttachArtwork(AttachArtworkRequest) returns (AttachArtworkResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+
+message Movie {
+  string id = 1;
+  string title = 2;
+  optional string synopsis = 3;
+  // ISO format: YYYY-MM-DD.
+  optional string release_date = 4;
+  optional int32 runtime_minutes = 5;
+  optional string artwork_key = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+// The fields a user can edit, shared by create and update.
+message MovieFields {
+  string title = 1 [
+    (buf.validate.field).cel = {id: "title.required", message: "Title is required", expression: "this.matches(r'\\S')"},
+    (buf.validate.field).cel = {id: "title.max_len", message: "Title must be 200 characters or fewer", expression: "this.size() <= 200"}
+  ];
+  optional string synopsis = 2 [
+    (buf.validate.field).cel = {id: "synopsis.max_len", message: "Synopsis must be 5000 characters or fewer", expression: "this.size() <= 5000"}
+  ];
+  // Only the shape is checked here; movie-app also rejects days that don't exist, like 2025-02-30.
+  optional string release_date = 3 [
+    (buf.validate.field).cel = {id: "release_date.format", message: "Release date must be a real date in the format YYYY-MM-DD", expression: "this.matches(r'^\\d{4}-\\d{2}-\\d{2}$')"}
+  ];
+  optional int32 runtime_minutes = 4 [
+    (buf.validate.field).cel = {id: "runtime_minutes.range", message: "Runtime must be 1 to 1000 minutes", expression: "this >= 1 && this <= 1000"}
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Requests and responses
+// ---------------------------------------------------------------------------
+
+message ListMoviesRequest {
+  string query = 1;
+  string cast_name = 2;
+  string creator_name = 3;
+  int32 page = 4 [(buf.validate.field).int32.gte = 0];
+  int32 page_size = 5 [(buf.validate.field).int32 = {gte: 1, lte: 100}];
+}
+
+message ListMoviesResponse {
+  repeated Movie movies = 1;
+  int64 total_count = 2;
+}
+
+message GetMovieRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+// `required`: without it, missing fields would skip the rules inside them.
+message CreateMovieRequest {
+  MovieFields fields = 1 [(buf.validate.field).required = true];
+}
+
+message UpdateMovieRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  MovieFields fields = 2 [(buf.validate.field).required = true];
+}
+
+message DeleteMovieRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message AttachArtworkRequest {
+  string movie_id = 1 [(buf.validate.field).string.uuid = true];
+  string storage_key = 2;
+}
+
+message AttachArtworkResponse {
+  optional string replaced_storage_key = 1;
+}

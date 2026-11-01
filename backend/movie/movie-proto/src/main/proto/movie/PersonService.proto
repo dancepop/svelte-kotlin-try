@@ -1,0 +1,85 @@
+syntax = "proto3";
+package movie;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// Use multiple files or there will be an outerclass containing all messages
+option java_multiple_files = true;
+// import package path
+option java_package = "com.backend.movie.api";
+
+// Seems a bit strange to have everything in 1 file to kill readability but the rpc
+// language rules also don't allow inline fields so i'll follow google's style over at:
+// https://github.com/googleapis/googleapis/blob/master/google/pubsub/v1/pubsub.proto
+// Ideally should separate out some of these i feel. Design can be better but not
+// going to spend much time here.
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service PersonService {
+  rpc ListPeople(ListPeopleRequest) returns (ListPeopleResponse);
+  rpc GetPerson(GetPersonRequest) returns (Person);
+  rpc CreatePerson(CreatePersonRequest) returns (Person);
+  rpc UpdatePerson(UpdatePersonRequest) returns (Person);
+  rpc DeletePerson(DeletePersonRequest) returns (google.protobuf.Empty);
+}
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+
+message Person {
+  string id = 1;
+  string name = 2;
+  optional string bio = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+// The fields a user can edit, shared by create and update.
+message PersonFields {
+  string name = 1 [
+    (buf.validate.field).cel = {id: "name.required", message: "Name is required", expression: "this.matches(r'\\S')"},
+    (buf.validate.field).cel = {id: "name.max_len", message: "Name must be 200 characters or fewer", expression: "this.size() <= 200"}
+  ];
+  optional string bio = 2 [
+    (buf.validate.field).cel = {id: "bio.max_len", message: "Bio must be 5000 characters or fewer", expression: "this.size() <= 5000"}
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Requests and responses
+// ---------------------------------------------------------------------------
+
+message ListPeopleRequest {
+  string query = 1;
+  int32 page = 2 [(buf.validate.field).int32.gte = 0];
+  int32 page_size = 3 [(buf.validate.field).int32 = {gte: 1, lte: 100}];
+}
+
+message ListPeopleResponse {
+  repeated Person people = 1;
+  int64 total_count = 2;
+}
+
+message GetPersonRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+// `required`: without it, missing fields would skip the rules inside them.
+message CreatePersonRequest {
+  PersonFields fields = 1 [(buf.validate.field).required = true];
+}
+
+message UpdatePersonRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  PersonFields fields = 2 [(buf.validate.field).required = true];
+}
+
+message DeletePersonRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}

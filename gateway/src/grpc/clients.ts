@@ -5,10 +5,14 @@ import { fileURLToPath } from "node:url";
 import type { GrpcServiceConfig } from "../config.js";
 import { toGraphQLError } from "../errors.js";
 
-// Physical copies of the contracts in each backend -api module, so they must be re-copied when a contract changes.
-// buf/validate/validate.proto is there because the contracts import it (it comes from the protovalidate jar).
-// With separate teams this should be a package install: each -api module publishes a versioned package.
-const PROTO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../proto"); // from src/grpc or dist/grpc
+// The contracts are read straight from the backend proto modules. gateway/proto only holds
+// buf/validate/validate.proto, which the contracts import (on the Kotlin side it comes from the protovalidate jar).
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.."); // from src/grpc or dist/grpc
+const PROTO_DIRS = [
+  path.join(REPO_ROOT, "backend/movie/movie-proto/src/main/proto"),
+  path.join(REPO_ROOT, "backend/media/media-proto/src/main/proto"),
+  path.join(REPO_ROOT, "gateway/proto"),
+];
 
 const DEADLINE_MS = 5_000;
 
@@ -29,10 +33,10 @@ export function createClients(services: { movie: GrpcServiceConfig; media: GrpcS
   const movieApi = loadProto(services.movie);
   const mediaApi = loadProto(services.media);
   return {
-    movie: createClient(movieApi, "movie.MovieService", services.movie.address),
-    person: createClient(movieApi, "movie.PersonService", services.movie.address),
-    credit: createClient(movieApi, "movie.CreditService", services.movie.address),
-    media: createClient(mediaApi, "media.MediaService", services.media.address),
+    movie: createClient(movieApi, "movie", "MovieService", services.movie.address),
+    person: createClient(movieApi, "movie", "PersonService", services.movie.address),
+    credit: createClient(movieApi, "movie", "CreditService", services.movie.address),
+    media: createClient(mediaApi, "media", "MediaService", services.media.address),
   };
 }
 
@@ -59,8 +63,8 @@ export function connected(client: GrpcClient): Promise<void> {
 
 /** Loads the service's .proto at runtime (no codegen). */
 function loadProto(cfg: GrpcServiceConfig): grpc.GrpcObject {
-  const definition = protoLoader.loadSync(cfg.protoFile, {
-    includeDirs: [PROTO_DIR],
+  const definition = protoLoader.loadSync(cfg.protoFiles, {
+    includeDirs: PROTO_DIRS,
     keepCase: false, // total_count becomes totalCount
     enums: String, // "CAST" rather than 1
     longs: Number, // JS numbers are exact up to 9 PB, far above any count or file size here
@@ -69,10 +73,8 @@ function loadProto(cfg: GrpcServiceConfig): grpc.GrpcObject {
   return grpc.loadPackageDefinition(definition);
 }
 
-function createClient(api: grpc.GrpcObject, serviceName: string, address: string): GrpcClient {
-  const ClientConstructor = serviceName.split(".").reduce<unknown>((node, key) => (node as grpc.GrpcObject)?.[key], api);
-  if (typeof ClientConstructor !== "function") {
-    throw new Error(`Service ${serviceName} not found`);
-  }
-  return new (ClientConstructor as grpc.ServiceClientConstructor)(address, grpc.credentials.createInsecure());
+/** pkg is the .proto's `package` line, service its `service` name. */
+function createClient(api: grpc.GrpcObject, pkg: string, service: string, address: string): GrpcClient {
+  const Client = (api[pkg] as grpc.GrpcObject)[service] as grpc.ServiceClientConstructor;
+  return new Client(address, grpc.credentials.createInsecure());
 }

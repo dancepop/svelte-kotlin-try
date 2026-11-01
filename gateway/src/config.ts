@@ -1,7 +1,7 @@
 export interface GrpcServiceConfig {
   address: string;
-  /** Path inside gateway/proto. */
-  protoFile: string;
+  /** Paths inside the backend proto modules: one file per gRPC service. */
+  protoFiles: string[];
 }
 
 export const config = {
@@ -12,11 +12,11 @@ export const config = {
   services: {
     movie: {
       address: process.env.MOVIE_SERVICE_ADDR ?? "localhost:9091",
-      protoFile: "movie/movie_service.proto",
+      protoFiles: ["movie/MovieService.proto", "movie/PersonService.proto", "movie/CreditService.proto"],
     },
     media: {
       address: process.env.MEDIA_SERVICE_ADDR ?? "localhost:9092",
-      protoFile: "media/media_service.proto",
+      protoFiles: ["media/MediaService.proto"],
     },
   } satisfies Record<string, GrpcServiceConfig>,
 };

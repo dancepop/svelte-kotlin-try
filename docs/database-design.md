@@ -3,8 +3,8 @@
 Status: **built** (`V1__create_movie_tables.sql`). Postgres 18, **one database** (`app`) and **one schema** (`movie`).
 
 Scope:
-- **movie-service** owns **all the data**: movies, cast/creators (people + credits), search, and a pointer to each movie's artwork.
-- **media-service** has **no database**. How files are stored and moved is in [backend-design.md](backend-design.md).
+- **movie-app** owns **all the data**: movies, cast/creators (people + credits), search, and a pointer to each movie's artwork.
+- **media-app** has **no database**. How files are stored and moved is in [backend-design.md](backend-design.md).
 
 ---
 
@@ -13,11 +13,11 @@ Scope:
 ```
 Postgres container (postgres:18)
 └── database: app
-    ├── schema: movie   ← owned by role movie   (used only by movie-service)
+    ├── schema: movie   ← owned by role movie   (used only by movie-app)
     └── schema: public  ← only the pg_trgm extension lives here
 ```
 
-| | movie-service | media-service |
+| | movie-app | media-app |
 |---|---|---|
 | Database access | user `movie` / password `movie`, schema `movie` | **none** |
 | Migrations | Flyway, history in `movie.flyway_schema_history` | none |
@@ -41,7 +41,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 | Who creates it | What |
 |---|---|
 | Init script (superuser, once) | role, schema, extension |
-| Flyway (movie-service, as `movie`, on every start-up) | tables, indexes |
+| Flyway (movie-app, as `movie`, on every start-up) | tables, indexes |
 
 Init scripts only run on an empty volume, and Flyway refuses to start if an applied migration has changed. After editing either one, reset with `docker compose down -v`.
 
@@ -55,7 +55,7 @@ Init scripts only run on an empty volume, and Flyway refuses to start if an appl
 | Table | snake_case, **plural** | `movies`, `people`, `credits` |
 | Primary key | `id` (uuid) for entities; composite natural key for link tables | `movies.id`; `credits (movie_id, person_id, credit_type)` |
 | Foreign key column | `<singular>_id` | `movie_id`, `person_id` |
-| File pointer | `<what>_key`: path relative to media-service's media folder, **never a URL or an absolute path** | `artwork_key`: `{movieId}/{uuid}` |
+| File pointer | `<what>_key`: path relative to media-app's media folder, **never a URL or an absolute path** | `artwork_key`: `{movieId}/{uuid}` |
 | Enum-like column | `text`, values in UPPER_SNAKE, allowed values checked by the application | `credit_type`: `CAST`, `CREATOR` |
 | Timestamps | `created_at`, `updated_at`, type `timestamptz` | |
 | Primary key constraint | `pk_<table>` | `pk_movies` |
@@ -67,10 +67,10 @@ Init scripts only run on an empty volume, and Flyway refuses to start if an appl
 ### Why these choices
 - **Plural tables.** A singular name would give `movie.movie`, which is confusing. Also, `user` and `order` are reserved words; plural names avoid that whole problem.
 - **UUIDv7 primary keys** (`uuidv7()`, built in since Postgres 18).
-  - Ids cross services (media-service sends movie ids) and show up in URLs and file paths.
+  - Ids cross services (media-app sends movie ids) and show up in URLs and file paths.
   - v7 starts with a millisecond timestamp, so new ids are always larger than old ones: inserts go to the end of the index instead of random pages, and sorting by `id` is roughly sorting by creation time. The rest is random, so ids still can't be guessed and don't reveal how many rows exist; they do reveal when a row was created, which is fine for movies and people.
   - The cost is a larger index than `bigint`, which doesn't matter at this size.
-- **No `CHECK` constraints; value rules live in the application.** Lengths and allowed values are rules in movie-service's `.proto` contract, checked before a request reaches the database. There they're unit-tested and can change without a migration. The database keeps only structure: types, `NOT NULL`, keys and foreign keys.
+- **No `CHECK` constraints; value rules live in the application.** Lengths and allowed values are rules in movie-app's `.proto` contract, checked before a request reaches the database. There they're unit-tested and can change without a migration. The database keeps only structure: types, `NOT NULL`, keys and foreign keys.
 - **Except uniqueness.** A primary key on `credits` isn't a value rule: it depends on *other rows*. The application can't enforce it safely, because two concurrent requests can both check "no duplicate yet" and both insert. Only the database sees both inserts and rejects the second.
 - **`text` instead of `CREATE TYPE ... AS ENUM`.** Removing a value from a Postgres ENUM is not supported at all; with `text`, changing the allowed values is an application change.
 - **`text` instead of `varchar(n)`.** In Postgres they perform the same, and length limits are checked by the application.
@@ -95,6 +95,7 @@ erDiagram
     text artwork_key
     timestamptz created_at
     timestamptz updated_at
+    bigint version
   }
   people {
     uuid id PK
@@ -102,6 +103,7 @@ erDiagram
     text bio
     timestamptz created_at
     timestamptz updated_at
+    bigint version
   }
   credits {
     uuid movie_id PK,FK
@@ -129,9 +131,10 @@ The **Rule** columns below are enforced by the application, not the database (se
 | `synopsis` | text | yes | | ≤ 5000 chars |
 | `release_date` | date | yes | | unknown release date is allowed |
 | `runtime_minutes` | integer | yes | | 1–1000 |
-| `artwork_key` | text | yes | | file path under media-service's media folder, e.g. `{movieId}/{uuid}`; null until artwork is uploaded |
+| `artwork_key` | text | yes | | file path under media-app's media folder, e.g. `{movieId}/{uuid}`; null until artwork is uploaded |
 | `created_at` | timestamptz | no | `now()` | |
 | `updated_at` | timestamptz | no | `now()` | |
+| `version` | bigint | no | `0` | optimistic locking; raised by every save |
 
 - **Indexes:** a trigram GIN index on `title`, for search (§5).
 - **Why a column for artwork:** a movie has at most one image, and its size can be read from the file itself, so a separate table would hold nothing else.
@@ -144,6 +147,7 @@ The **Rule** columns below are enforced by the application, not the database (se
 | `name` | text | no | | not blank, ≤ 200 chars |
 | `bio` | text | yes | | ≤ 5000 chars |
 | `created_at`, `updated_at` | timestamptz | no | `now()` | |
+| `version` | bigint | no | `0` | optimistic locking, like `movies` |
 
 - **Indexes:** a trigram GIN index on `name`.
 
@@ -179,9 +183,10 @@ CREATE TABLE movies (
     synopsis        text,
     release_date    date,
     runtime_minutes integer,
-    artwork_key     text,  -- path under media-service's media folder; null until artwork is uploaded
+    artwork_key     text,  -- path under media-app's media folder; null until artwork is uploaded
     created_at      timestamptz NOT NULL DEFAULT now(),
     updated_at      timestamptz NOT NULL DEFAULT now(),
+    version         bigint      NOT NULL DEFAULT 0,  -- optimistic locking: raised by every save
     CONSTRAINT pk_movies PRIMARY KEY (id)
 );
 CREATE INDEX idx_movies_title_trgm ON movies USING gin (title gin_trgm_ops);
@@ -192,6 +197,7 @@ CREATE TABLE people (
     bio        text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    version    bigint      NOT NULL DEFAULT 0,
     CONSTRAINT pk_people PRIMARY KEY (id)
 );
 CREATE INDEX idx_people_name_trgm ON people USING gin (name gin_trgm_ops);
@@ -224,12 +230,13 @@ CREATE INDEX idx_credits_person_id ON credits (person_id);
 
 | DB decision | What the backend must do |
 |---|---|
-| One user + schema, both named `movie` | movie-service connects as `movie`/`movie` to `jdbc:postgresql://localhost:5433/app`. The default `search_path` handles the schema. media-service gets **no** datasource and no JDBC/Flyway dependencies. |
-| Flyway | Only movie-service: `spring.flyway.schemas=movie`, migrations in `src/main/resources/db/migration`. |
+| One user + schema, both named `movie` | movie-app connects as `movie`/`movie` to `jdbc:postgresql://localhost:5433/app`. The default `search_path` handles the schema. media-app gets **no** datasource and no JDBC/Flyway dependencies. |
+| Flyway | Only movie-app: `spring.flyway.schemas=movie`, migrations in `src/main/resources/db/migration`. |
 | `artwork_key` stores relative paths, not URLs | URLs are built when data is read, so storage can move (local folder → S3) without touching data. |
-| No `CHECK`s | movie-service checks every value rule on its data (title not blank, lengths, allowed `credit_type`) against the `.proto` rules before writing, and returns INVALID_ARGUMENT. These rules get unit tests with edge cases. |
+| No `CHECK`s | movie-app checks every value rule on its data (title not blank, lengths, allowed `credit_type`) against the `.proto` rules before writing, and returns INVALID_ARGUMENT. These rules get unit tests with edge cases. |
 | Named `pk_`/`fk_` constraints | The backend maps constraint names to friendly errors, e.g. `pk_credits` → ALREADY_EXISTS ("Already credited as cast on this movie"), `fk_credits_movie_id` → NOT_FOUND. |
-| `updated_at` | Set by the application on update. There's no database trigger, so the logic stays in tested Kotlin. |
+| `updated_at` | Set by Spring Data's auditing (`@LastModifiedDate`) on every save. There's no database trigger. |
+| `version` | Optimistic locking (`@Version`). `save()` updates `WHERE id = ? AND version = ?`, so a save based on an old read fails instead of overwriting a newer one. Credits have none: they're only inserted and deleted. |
 
 ---
 
@@ -237,6 +244,6 @@ CREATE INDEX idx_credits_person_id ON credits (person_id);
 
 Decided:
 - One database `app`, one schema `movie`, user `movie`/`movie`.
-- movie-service owns all data, including each movie's `artwork_key`. media-service has no database; it handles the artwork files.
+- movie-app owns all data, including each movie's `artwork_key`. media-app has no database; it handles the artwork files.
 - No `CHECK` constraints; value rules live in the application. Uniqueness stays in the database (`pk_credits`).
 - Left out to match the spec: genres, `people.birth_date`, `credits.role` / `billing_order`, a unique title + release date on `movies` (duplicate movie titles are allowed), and version columns (when two people edit the same row, the last save wins).

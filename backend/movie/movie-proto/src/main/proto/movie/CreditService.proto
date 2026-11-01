@@ -1,0 +1,87 @@
+syntax = "proto3";
+package movie;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/empty.proto";
+
+// Use multiple files or there will be an outerclass containing all messages
+option java_multiple_files = true;
+// import package path
+option java_package = "com.backend.movie.api";
+
+// Seems a bit strange to have everything in 1 file to kill readability but the rpc
+// language rules also don't allow inline fields so i'll follow google's style over at:
+// https://github.com/googleapis/googleapis/blob/master/google/pubsub/v1/pubsub.proto
+// Ideally should separate out some of these i feel. Design can be better but not
+// going to spend much time here.
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service CreditService {
+  rpc AddCredit(CreditRequest) returns (google.protobuf.Empty);
+  rpc RemoveCredit(CreditRequest) returns (google.protobuf.Empty);
+  // Take many ids, so the gateway's loaders can fetch a whole page's credits in one call.
+  rpc ListCreditsByMovies(ListCreditsByMoviesRequest) returns (ListCreditsByMoviesResponse);
+  rpc ListCreditsByPeople(ListCreditsByPeopleRequest) returns (ListCreditsByPeopleResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+
+// 0 is required by proto3 and means "not set", which the rules reject, so a forgotten field can't pass as a real value.
+//
+enum CreditType {
+  CREDIT_TYPE_UNSPECIFIED = 0;
+  CAST = 1;
+  CREATOR = 2;
+}
+
+// A credit seen from a movie: who was credited on it.
+message MovieCredit {
+  string movie_id = 1;
+  string person_id = 2;
+  string name = 3;
+  CreditType type = 4;
+}
+
+// A credit seen from a person: which movie they were credited on.
+message PersonCredit {
+  string person_id = 1;
+  string movie_id = 2;
+  string title = 3;
+  CreditType type = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Requests and responses
+// ---------------------------------------------------------------------------
+
+message CreditRequest {
+  // If gateway doesn't send string fields then its empty string "" so will fail uuid check;
+  // implicitly required for movie_id and person_id.
+  string movie_id = 1 [(buf.validate.field).string.uuid = true];
+  string person_id = 2 [(buf.validate.field).string.uuid = true];
+  // `required` on an enum rejects 0 (not set); `defined_only` rejects numbers the enum doesn't list.
+  // e.g. gateway doesn't send enum value which becomes 0 then its rejected OR gateway sends 4 which is
+  // not in the list then also rejected.
+  CreditType type = 3 [(buf.validate.field).required = true, (buf.validate.field).enum.defined_only = true];
+}
+
+message ListCreditsByMoviesRequest {
+  repeated string movie_ids = 1 [(buf.validate.field).repeated = {max_items: 100, items: {string: {uuid: true}}}];
+}
+
+message ListCreditsByMoviesResponse {
+  repeated MovieCredit credits = 1;
+}
+
+message ListCreditsByPeopleRequest {
+  repeated string person_ids = 1 [(buf.validate.field).repeated = {max_items: 100, items: {string: {uuid: true}}}];
+}
+
+message ListCreditsByPeopleResponse {
+  repeated PersonCredit credits = 1;
+}

@@ -1,9 +1,9 @@
 #!/bin/sh
-# Adds the sample data to an empty database. The connection settings come from the PG* variables in docker-compose.yml.
+# Adds the sample data to an empty database.
 set -e
 
-# movie-service creates the tables through Flyway when it starts, which can be after this runs.
-echo "Waiting for the tables. Start movie-service if it isn't running."
+# movie-app creates the tables through Flyway when it starts, which can be after this runs.
+echo "Waiting for the tables. Start movie-app if it isn't running."
 until [ "$(psql -tAc "SELECT to_regclass('movie.credits') IS NOT NULL")" = "t" ]; do
   sleep 2
 done

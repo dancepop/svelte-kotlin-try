@@ -39,7 +39,6 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 spring-boot-starter-data-jdbc-test = { module = "org.springframework.boot:spring-boot-starter-data-jdbc-test" }
-testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
 # Mocks for Kotlin (Kotlin's answer to Mockito). Not in the Spring Boot BOM, so it needs a version.
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 
