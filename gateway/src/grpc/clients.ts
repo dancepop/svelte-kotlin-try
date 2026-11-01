@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import type { GrpcServiceConfig } from "../config.js";
 import { toGraphQLError } from "../errors.js";
 
-// The contracts are read straight from the backend proto modules. gateway/proto only holds
-// buf/validate/validate.proto, which the contracts import (on the Kotlin side it comes from the protovalidate jar).
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.."); // from src/grpc or dist/grpc
+// Maybe would've been better to use Apollo router with federation instead of Apollo server but
+// double api controllers on each backend service?
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PROTO_DIRS = [
   path.join(REPO_ROOT, "backend/movie/movie-proto/src/main/proto"),
   path.join(REPO_ROOT, "backend/media/media-proto/src/main/proto"),
@@ -19,7 +19,6 @@ const DEADLINE_MS = 5_000;
 /** UploadFile and ReadFile last as long as the transfer. This allows for 5 MB on a very slow connection. */
 export const TRANSFER_DEADLINE_MS = 5 * 60 * 1000;
 
-/** A client whose methods come from the .proto at runtime, so TypeScript can't know them. */
 export type GrpcClient = grpc.Client & Record<string, any>;
 
 export interface Clients {

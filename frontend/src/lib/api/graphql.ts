@@ -16,7 +16,6 @@ export interface GraphQLResponse<T> {
 	}[];
 }
 
-/** Sends one GraphQL operation over HTTP. */
 export async function graphqlRequest<T>(
 	url: string,
 	query: string,
@@ -38,17 +37,17 @@ export async function graphqlRequest<T>(
 	return readResponse(response.status, body);
 }
 
-/** Returns the response's data, or throws its error. Uploads use this too, because they arrive the same way. */
-export function readResponse<T>(status: number, body: GraphQLResponse<T> | null): T {
-	// GraphQL errors come first: Apollo reports invalid queries as HTTP 400 with an `errors` array.
-	if (body?.errors?.length) {
-		const { code } = body.errors[0].extensions ?? {};
-		throw new GraphQLRequestError(body.errors.map((e) => e.message).join('; '), code);
+export function readResponse<T>(status: number, response: GraphQLResponse<T> | null): T {
+	// Not entirely sure about the conventions surrounding graphql returning 200 with validation errors
+	// For this case its 200 with validation errors hence we check for errors first.
+	if (response?.errors?.length) {
+		const { code } = response.errors[0].extensions ?? {};
+		throw new GraphQLRequestError(response.errors.map((e) => e.message).join('; '), code);
 	}
-	if (status < 200 || status >= 300 || !body?.data) {
+	if (status < 200 || status >= 300 || !response?.data) {
 		throw new GraphQLRequestError(`Gateway responded with HTTP ${status}`);
 	}
-	return body.data;
+	return response.data;
 }
 
 export function errorMessage(error: unknown): string {

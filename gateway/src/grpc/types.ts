@@ -1,5 +1,3 @@
-// The gRPC messages as the proto loader returns them. The .proto files are the source of truth; these are checked by hand.
-
 export type CreditType = "CAST" | "CREATOR";
 
 export interface Timestamp {

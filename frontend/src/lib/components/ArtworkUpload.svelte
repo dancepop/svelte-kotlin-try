@@ -1,13 +1,22 @@
 <script lang="ts">
 	import { errorMessage } from '#lib/api/graphql.ts';
 	import { uploadArtwork } from '#lib/api/upload.ts';
-	import { checkArtworkFile } from '#lib/artwork-file.ts';
+
+	const MAX_ARTWORK_BYTES = 5 * 1024 * 1024;
+	const ALLOWED_EXTENSION = /\.(jpe?g|png)$/i;
 
 	let { movieId, onuploaded }: { movieId: string; onuploaded: (url: string) => void } = $props();
 
 	let uploading = $state(false);
 	let progress = $state(0);
 	let error = $state<string | null>(null);
+
+	/** Returns what's wrong with the file, or null if it can be uploaded. */
+	function checkArtworkFile(file: File): string | null {
+		if (!ALLOWED_EXTENSION.test(file.name)) return 'Artwork must be a .jpg, .jpeg or .png file';
+		if (file.size > MAX_ARTWORK_BYTES) return 'Artwork must be 5 MB or smaller';
+		return null;
+	}
 
 	async function upload(event: Event) {
 		const input = event.currentTarget as HTMLInputElement;
@@ -27,8 +36,8 @@
 		} catch (e) {
 			error = errorMessage(e);
 		} finally {
+			// Allow reupload of same file
 			uploading = false;
-			// So choosing the same file again still fires `change`.
 			input.value = '';
 		}
 	}

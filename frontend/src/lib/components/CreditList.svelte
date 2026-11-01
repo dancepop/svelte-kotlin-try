@@ -54,7 +54,11 @@
 <section class="rounded-box bg-base-200 mt-4 p-4">
 	<div class="mb-2 flex items-center justify-between gap-2">
 		<h2 class="text-lg font-semibold">{heading}</h2>
-		<button type="button" class="btn btn-sm" onclick={() => (picking = !picking)}>
+		<button
+			type="button"
+			class={['btn btn-sm', !picking && 'btn-primary']}
+			onclick={() => (picking = !picking)}
+		>
 			{picking ? 'Done' : '+ Add'}
 		</button>
 	</div>
@@ -64,7 +68,7 @@
 	{/if}
 
 	{#if credits.length > 0}
-		<ul>
+		<ul class="divide-base-300 divide-y">
 			{#each credits as credit (credit.personId)}
 				<li class="flex items-center justify-between gap-2 py-1">
 					<a
@@ -75,12 +79,17 @@
 					</a>
 					<button
 						type="button"
-						class="btn btn-ghost btn-sm btn-circle"
+						class="btn btn-ghost btn-circle text-error text-xl"
 						aria-label="Remove {credit.name}"
+						title="Remove"
 						disabled={removingId === credit.personId}
 						onclick={() => remove(credit.personId)}
 					>
-						×
+						{#if removingId === credit.personId}
+							<span class="loading loading-spinner loading-sm"></span>
+						{:else}
+							✕
+						{/if}
 					</button>
 				</li>
 			{/each}
@@ -90,6 +99,9 @@
 	{/if}
 
 	{#if picking}
-		<PersonPicker label="Search people to add to {heading}" disabled={adding} onpick={add} />
+		<div class="rounded-box border-base-300 bg-base-100 mt-3 border p-3">
+			<h3 class="font-medium">Add to {heading.toLowerCase()}</h3>
+			<PersonPicker label="Search people to add to {heading}" disabled={adding} onpick={add} />
+		</div>
 	{/if}
 </section>

@@ -27,7 +27,6 @@ export async function listPeople(args: {
 	return people;
 }
 
-/** Returns null for an unknown id. */
 export async function getPerson(id: string): Promise<Person | null> {
 	const query = /* GraphQL */ `
 		query Person($id: ID!) {

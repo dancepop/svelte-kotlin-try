@@ -7,7 +7,6 @@ export interface GrpcServiceConfig {
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:5173").split(","),
-  /** The gateway's address as seen from the browser; media URLs start with it. */
   publicUrl: process.env.PUBLIC_URL ?? "http://localhost:4000",
   services: {
     movie: {

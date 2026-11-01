@@ -28,7 +28,7 @@ export function uploadArtwork(
 	return new Promise((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
 		xhr.open('POST', GRAPHQL_URL);
-		// Apollo's CSRF protection rejects multipart requests without this.
+		// For Apollo's default CSRF protection. Used for multipart requests.
 		xhr.setRequestHeader('apollo-require-preflight', 'true');
 
 		xhr.upload.onprogress = (event) => {

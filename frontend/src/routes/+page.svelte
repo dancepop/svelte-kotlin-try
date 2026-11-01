@@ -10,7 +10,26 @@
 	import SearchBox from '#lib/components/SearchBox.svelte';
 	import Spinner from '#lib/components/Spinner.svelte';
 	import { listQuery, PAGE_SIZE, pageNumberOf, searchTextOf } from '#lib/list-url.ts';
-	import { parseSearch } from '#lib/search.ts';
+
+	// A filter starts a word, so `recast:x` stays part of the title search. Its value can follow a space,
+	// and is quoted or runs to the next space.
+	const FILTER = /(?<!\S)(cast|creator):\s*(?:"([^"]*)"|(\S*))/gi;
+
+	/** Splits `heat cast:david creator:"michael mann"` into its filters. If a filter is repeated, the last one wins. */
+	function parseSearch(text: string): { search: string; castName: string; creatorName: string } {
+		let castName = '';
+		let creatorName = '';
+		const search = text
+			.replace(FILTER, (_match, filter: string, quoted?: string, plain?: string) => {
+				const value = quoted ?? plain ?? '';
+				if (filter.toLowerCase() === 'cast') castName = value;
+				else creatorName = value;
+				return '';
+			})
+			.replace(/\s+/g, ' ')
+			.trim();
+		return { search, castName, creatorName };
+	}
 
 	const searchText = $derived(searchTextOf(page.url.searchParams));
 	const pageNumber = $derived(pageNumberOf(page.url.searchParams));
