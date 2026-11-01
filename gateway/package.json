@@ -7,6 +7,7 @@
     "codegen": "npm run codegen:grpc && npm run codegen:graphql",
     "codegen:grpc": "proto-loader-gen-types --longs=Number --enums=String --defaults --grpcLib=@grpc/grpc-js -I ../backend/movie/movie-proto/src/main/proto -I ../backend/media/media-proto/src/main/proto -I proto -O src/grpc/generated movie/MovieService.proto movie/PersonService.proto movie/CreditService.proto media/MediaService.proto && node scripts/add-js-extensions.mjs src/grpc/generated",
     "codegen:graphql": "graphql-codegen --config codegen.ts",
+    "postinstall": "npm run codegen",
     "predev": "npm run codegen",
     "dev": "tsx watch src/index.ts",
     "prebuild": "npm run codegen",
