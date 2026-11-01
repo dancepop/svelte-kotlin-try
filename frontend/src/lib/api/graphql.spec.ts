@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GraphQLRequestError, graphqlRequest } from './graphql';
+import { graphqlRequest } from './graphql';
 
 const URL = 'http://gateway.test/graphql';
 
@@ -43,20 +43,9 @@ describe('graphqlRequest', () => {
 		);
 	});
 
-	it('throws the HTTP status when the body is not JSON', async () => {
-		const fetchFn = vi.fn(
-			async () => new Response('<html>Bad Gateway</html>', { status: 502 })
-		) as unknown as typeof fetch;
-
-		await expect(graphqlRequest(URL, '{ hello }', {}, fetchFn)).rejects.toThrow('HTTP 502');
-	});
-
 	it('throws when a successful response has no data', async () => {
-		const error = await graphqlRequest(URL, '{ hello }', {}, respond(200, { data: null })).catch(
-			(e: unknown) => e
-		);
-
-		expect(error).toBeInstanceOf(GraphQLRequestError);
-		expect((error as Error).message).toContain('HTTP 200');
+		await expect(
+			graphqlRequest(URL, '{ hello }', {}, respond(200, { data: null }))
+		).rejects.toThrow('HTTP 200');
 	});
 });

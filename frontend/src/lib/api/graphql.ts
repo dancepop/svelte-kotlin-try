@@ -1,19 +1,6 @@
-export class GraphQLRequestError extends Error {
-	override name = 'GraphQLRequestError';
-	readonly code?: string;
-
-	constructor(message: string, code?: string) {
-		super(message);
-		this.code = code;
-	}
-}
-
 export interface GraphQLResponse<T> {
 	data?: T | null;
-	errors?: {
-		message: string;
-		extensions?: { code?: string };
-	}[];
+	errors?: { message: string }[];
 }
 
 export async function graphqlRequest<T>(
@@ -30,10 +17,10 @@ export async function graphqlRequest<T>(
 			body: JSON.stringify({ query, variables })
 		});
 	} catch {
-		throw new GraphQLRequestError('Could not reach the gateway. Is it running?');
+		throw new Error('Could not reach the gateway. Is it running?');
 	}
 
-	const body: GraphQLResponse<T> | null = await response.json().catch(() => null);
+	const body: GraphQLResponse<T> = await response.json();
 	return readResponse(response.status, body);
 }
 
@@ -41,15 +28,14 @@ export function readResponse<T>(status: number, response: GraphQLResponse<T> | n
 	// Not entirely sure about the conventions surrounding graphql returning 200 with validation errors
 	// For this case its 200 with validation errors hence we check for errors first.
 	if (response?.errors?.length) {
-		const { code } = response.errors[0].extensions ?? {};
-		throw new GraphQLRequestError(response.errors.map((e) => e.message).join('; '), code);
+		throw new Error(response.errors.map((e) => e.message).join('; '));
 	}
 	if (status < 200 || status >= 300 || !response?.data) {
-		throw new GraphQLRequestError(`Gateway responded with HTTP ${status}`);
+		throw new Error(`Gateway responded with HTTP ${status}`);
 	}
 	return response.data;
 }
 
 export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : 'Something went wrong, try again';
+	return (error as Error).message;
 }

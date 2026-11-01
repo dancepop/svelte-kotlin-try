@@ -1,5 +1,5 @@
 import { GRAPHQL_URL } from '$app/env/public';
-import { GraphQLRequestError, readResponse } from './graphql.ts';
+import { readResponse } from './graphql.ts';
 
 const UPLOAD_ARTWORK = /* GraphQL */ `
 	mutation UploadArtwork($movieId: ID!, $file: Upload!) {
@@ -28,33 +28,23 @@ export function uploadArtwork(
 	return new Promise((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
 		xhr.open('POST', GRAPHQL_URL);
+		// xhr.response is the parsed body, or null if it isn't JSON.
+		xhr.responseType = 'json';
 		// For Apollo's default CSRF protection. Used for multipart requests.
 		xhr.setRequestHeader('apollo-require-preflight', 'true');
 
 		xhr.upload.onprogress = (event) => {
-			if (event.lengthComputable) onProgress(event.loaded / event.total);
+			onProgress(event.loaded / event.total);
 		};
 		xhr.onload = () => {
 			try {
-				const data = readResponse<{ uploadMovieArtwork: string }>(
-					xhr.status,
-					parseJson(xhr.responseText)
-				);
+				const data = readResponse<{ uploadMovieArtwork: string }>(xhr.status, xhr.response);
 				resolve(data.uploadMovieArtwork);
 			} catch (error) {
 				reject(error);
 			}
 		};
-		xhr.onerror = () =>
-			reject(new GraphQLRequestError('Could not reach the gateway. Is it running?'));
+		xhr.onerror = () => reject(new Error('Could not reach the gateway. Is it running?'));
 		xhr.send(form);
 	});
-}
-
-function parseJson(text: string) {
-	try {
-		return JSON.parse(text);
-	} catch {
-		return null;
-	}
 }

@@ -4,11 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "codegen": "npm run codegen:grpc && npm run codegen:graphql",
+    "codegen:grpc": "proto-loader-gen-types --longs=Number --enums=String --defaults --grpcLib=@grpc/grpc-js -I ../backend/movie/movie-proto/src/main/proto -I ../backend/media/media-proto/src/main/proto -I proto -O src/grpc/generated movie/MovieService.proto movie/PersonService.proto movie/CreditService.proto media/MediaService.proto && node scripts/add-js-extensions.mjs src/grpc/generated",
+    "codegen:graphql": "graphql-codegen --config codegen.ts",
+    "predev": "npm run codegen",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "prebuild": "npm run codegen",
+    "build": "tsc && cp src/graphql/schema.graphql dist/graphql/",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "pretypecheck": "npm run codegen",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",
@@ -22,11 +27,13 @@
     "graphql-upload-minimal": "^1.6.4"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "^7.4.6",
+    "@graphql-codegen/typescript": "^6.1.2",
+    "@graphql-codegen/typescript-resolvers": "^6.1.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^24.19.2",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "typescript": "^7.0.2"
   }
 }

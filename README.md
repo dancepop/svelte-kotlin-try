@@ -2,19 +2,32 @@
 
 A movie catalogue: Svelte (TypeScript) frontend, an Apollo GraphQL gateway, and Kotlin Spring Boot services that talk gRPC.
 
-> Work in progress. The backend services and GraphQL gateway are built. The frontend is still a placeholder, so the movie features can only be reached through the GraphQL API for now.
+## AI Disclaimer
 
-Design docs:
+This project is AI assisted using design plans with human vetting for the most part.
+
+## Design docs
 
 - [`docs/initial-setup-plan.md`](docs/initial-setup-plan.md): project structure and tooling
 - [`docs/database-design.md`](docs/database-design.md): tables, migrations and search indexes
 - [`docs/backend-design.md`](docs/backend-design.md): service behaviour, gRPC contracts and the GraphQL schema
+- [`docs/frontend-design.md`](docs/frontend-design.md): pages, data loading, progress feedback and layout
+- [`docs/unit-test-plan.md`](docs/unit-test-plan.md): what the tests cover
 
 ## Architecture
 
-```
-Browser ──GraphQL──▶ gateway (Apollo Server + Express, :4000) ──gRPC──▶ movie-app (:9091)  movies, cast & creators
-                                                               └─gRPC──▶ media-app (:9092)  artwork files: uploads, streaming
+```mermaid
+flowchart LR
+  browser[Browser]
+  gateway["gateway :4000<br/>Apollo Server + Express"]
+  movie["movie-app :9091<br/>movies, cast & creators"]
+  media["media-app :9092<br/>artwork files: uploads, streaming"]
+  db[(Postgres)]
+
+  browser -- GraphQL --> gateway
+  gateway -- gRPC --> movie
+  gateway -- gRPC --> media
+  movie --> db
 ```
 
 | Folder | What | Stack |
@@ -24,7 +37,7 @@ Browser ──GraphQL──▶ gateway (Apollo Server + Express, :4000) ──gR
 | `backend/` | Gradle multi-project with both services | Kotlin, Spring Boot 4.1, gRPC (coroutine stubs) |
 | `infra/` | Postgres init script: the `movie` role, schema and `pg_trgm` | Postgres 18 |
 
-Each service owns its gRPC contract in a `-proto` module (e.g. `backend/movie/movie-proto/src/main/proto`), which other services consume. The gateway keeps its own copy in `gateway/proto`, so copy the file there after changing a contract.
+Each service owns its gRPC contract in a `-proto` module (e.g. `backend/movie/movie-proto/src/main/proto`), which other services consume. The gateway reads the same `.proto` files and generates its TypeScript types from them on every `npm run dev`; `gateway/proto` only holds `buf/validate/validate.proto`, which the contracts import.
 
 ## Run
 
@@ -50,11 +63,6 @@ cd frontend && npm install && npm run dev       # http://localhost:5173
 ## Tests
 
 ```bash
-cd frontend && npx playwright install chromium && npm test   # browser install needed once, for component tests
+cd backend && ./gradlew test   # repository tests use the compose Postgres, so start it first
+cd frontend && npm test
 ```
-
-The backend and gateway have no tests yet. See [`docs/unit-test-plan.md`](docs/unit-test-plan.md).
-
-## How AI tools were used
-
-_To be completed._ Claude Code was used for planning the architecture, explaining trade-offs (GraphQL vs gRPC roles, Apollo Server vs Router, proto ownership), writing the design docs, and implementing the project setup, backend services and gateway, which were reviewed step by step.

@@ -246,4 +246,4 @@ Decided:
 - One database `app`, one schema `movie`, user `movie`/`movie`.
 - movie-app owns all data, including each movie's `artwork_key`. media-app has no database; it handles the artwork files.
 - No `CHECK` constraints; value rules live in the application. Uniqueness stays in the database (`pk_credits`).
-- Left out to match the spec: genres, `people.birth_date`, `credits.role` / `billing_order`, a unique title + release date on `movies` (duplicate movie titles are allowed), and version columns (when two people edit the same row, the last save wins).
+- Left out to match the spec: genres, `people.birth_date`, `credits.role` / `billing_order`, and a unique title + release date on `movies` (duplicate movie titles are allowed).

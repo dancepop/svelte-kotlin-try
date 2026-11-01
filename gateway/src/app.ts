@@ -4,15 +4,18 @@ import { expressMiddleware } from "@as-integrations/express5";
 import cors from "cors";
 import express from "express";
 import { graphqlUploadExpress } from "graphql-upload-minimal";
+import { readFileSync } from "node:fs";
 import http from "node:http";
+import { config } from "./config.js";
+import { type Context, createContext } from "./graphql/context.js";
+import { resolvers } from "./graphql/resolvers/index.js";
 import type { Clients } from "./grpc/clients.js";
-import { type Context, createLoaders } from "./loaders.js";
-import { mediaRoute } from "./media-route.js";
-import { resolvers } from "./resolvers.js";
-import { typeDefs } from "./schema.js";
+import { mediaRoute } from "./media/route.js";
 
-/** Express hosts Apollo on /graphql; plain HTTP routes (health, artwork) sit next to it. */
-export async function createApp(corsOrigins: string[], clients: Clients) {
+// schema.graphql is also the input to codegen:graphql. The build copies it to dist/graphql.
+const typeDefs = readFileSync(new URL("./graphql/schema.graphql", import.meta.url), "utf8");
+
+export async function createApp(clients: Clients) {
   const app = express();
   const httpServer = http.createServer(app);
 
@@ -23,18 +26,13 @@ export async function createApp(corsOrigins: string[], clients: Clients) {
   });
   await apollo.start();
 
-  app.get("/healthz", (_req, res) => {
-    res.json({ status: "ok" });
-  });
   app.get("/media/*key", mediaRoute(clients.media));
   app.use(
     "/graphql",
-    cors({ origin: corsOrigins }),
+    cors({ origin: config.corsOrigins }),
     express.json(),
     graphqlUploadExpress({ maxFiles: 1 }),
-    expressMiddleware(apollo, {
-      context: async () => ({ clients, loaders: createLoaders(clients) }),
-    }),
+    expressMiddleware(apollo, { context: async () => createContext(clients) }),
   );
 
   return { app, httpServer, apollo };

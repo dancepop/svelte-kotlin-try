@@ -3,7 +3,15 @@ import * as protoLoader from "@grpc/proto-loader";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { GrpcServiceConfig } from "../config.js";
-import { toGraphQLError } from "../errors.js";
+import { toGraphQLError } from "./errors.js";
+import type { ProtoGrpcType as CreditProto } from "./generated/CreditService.js";
+import type { ProtoGrpcType as MediaProto } from "./generated/MediaService.js";
+import type { ProtoGrpcType as MovieProto } from "./generated/MovieService.js";
+import type { ProtoGrpcType as PersonProto } from "./generated/PersonService.js";
+import type { MediaServiceClient } from "./generated/media/MediaService.js";
+import type { CreditServiceClient } from "./generated/movie/CreditService.js";
+import type { MovieServiceClient } from "./generated/movie/MovieService.js";
+import type { PersonServiceClient } from "./generated/movie/PersonService.js";
 
 // Maybe would've been better to use Apollo router with federation instead of Apollo server but
 // double api controllers on each backend service?
@@ -19,49 +27,53 @@ const DEADLINE_MS = 5_000;
 /** UploadFile and ReadFile last as long as the transfer. This allows for 5 MB on a very slow connection. */
 export const TRANSFER_DEADLINE_MS = 5 * 60 * 1000;
 
-export type GrpcClient = grpc.Client & Record<string, any>;
-
 export interface Clients {
-  movie: GrpcClient;
-  person: GrpcClient;
-  credit: GrpcClient;
-  media: GrpcClient;
+  movie: MovieServiceClient;
+  person: PersonServiceClient;
+  credit: CreditServiceClient;
+  media: MediaServiceClient;
 }
 
 export function createClients(services: { movie: GrpcServiceConfig; media: GrpcServiceConfig }): Clients {
-  const movieApi = loadProto(services.movie);
-  const mediaApi = loadProto(services.media);
+  const movieApi = loadProto<MovieProto & PersonProto & CreditProto>(services.movie);
+  const mediaApi = loadProto<MediaProto>(services.media);
+  const insecure = grpc.credentials.createInsecure();
   return {
-    movie: createClient(movieApi, "movie", "MovieService", services.movie.address),
-    person: createClient(movieApi, "movie", "PersonService", services.movie.address),
-    credit: createClient(movieApi, "movie", "CreditService", services.movie.address),
-    media: createClient(mediaApi, "media", "MediaService", services.media.address),
+    movie: new movieApi.movie.MovieService(services.movie.address, insecure),
+    person: new movieApi.movie.PersonService(services.movie.address, insecure),
+    credit: new movieApi.movie.CreditService(services.movie.address, insecure),
+    media: new mediaApi.media.MediaService(services.media.address, insecure),
   };
 }
 
-/** Calls a one-request, one-response method. A failure rejects with the matching GraphQL error. */
-export function unary<Response>(client: GrpcClient, method: string, request: unknown): Promise<Response> {
+// The types of a one-request, one-response method, read from its shortest overload: (request, callback).
+type UnaryShape<Req, Res> = (request: Req, callback: grpc.requestCallback<Res>) => grpc.ClientUnaryCall;
+type UnaryMethodName<C> = { [K in keyof C]: C[K] extends UnaryShape<any, any> ? K : never }[keyof C];
+type RequestOf<F> = F extends UnaryShape<infer Req, any> ? Req : never;
+type ResponseOf<F> = F extends UnaryShape<any, infer Res> ? Res : never;
+
+/**
+ * Calls a one-request, one-response method, e.g. `unary(clients.movie, "getMovie", { id })`.
+ * The method name, request and response are checked against the .proto. A failure rejects with the matching GraphQL error.
+ */
+export function unary<C extends grpc.Client, M extends UnaryMethodName<C>>(
+  client: C,
+  method: M,
+  request: RequestOf<C[M]>,
+): Promise<ResponseOf<C[M]>> {
+  type Callback = grpc.requestCallback<ResponseOf<C[M]>>;
+  const call = client[method] as (request: RequestOf<C[M]>, options: grpc.CallOptions, callback: Callback) => void;
   return new Promise((resolve, reject) => {
-    // waitForReady: if a service has just restarted, wait for the connection until the deadline.
-    const options = { deadline: Date.now() + DEADLINE_MS, waitForReady: true };
-    client[method](request, options, (error: grpc.ServiceError | null, response: Response) => {
+    call.call(client, request, { deadline: Date.now() + DEADLINE_MS }, (error, response) => {
       if (error) reject(toGraphQLError(error));
-      else resolve(response);
+      else resolve(response!);
     });
   });
 }
 
-/** Resolves once the client has a connection, and rejects if it can't get one by the deadline. */
-export function connected(client: GrpcClient): Promise<void> {
-  return new Promise((resolve, reject) => {
-    client.waitForReady(Date.now() + DEADLINE_MS, (error?: Error) =>
-      error ? reject(Object.assign(error, { code: grpc.status.UNAVAILABLE })) : resolve(),
-    );
-  });
-}
-
-/** Loads the service's .proto at runtime (no codegen). */
-function loadProto(cfg: GrpcServiceConfig): grpc.GrpcObject {
+/** Loads the service's .proto at runtime. The generated types describe what comes back. */
+function loadProto<Api>(cfg: GrpcServiceConfig): Api {
+  // These options must match the codegen:grpc script in package.json, or the generated types won't fit.
   const definition = protoLoader.loadSync(cfg.protoFiles, {
     includeDirs: PROTO_DIRS,
     keepCase: false, // total_count becomes totalCount
@@ -69,11 +81,5 @@ function loadProto(cfg: GrpcServiceConfig): grpc.GrpcObject {
     longs: Number, // JS numbers are exact up to 9 PB, far above any count or file size here
     defaults: true, // Unset optional fields stay undefined; everything else gets its default
   });
-  return grpc.loadPackageDefinition(definition);
-}
-
-/** pkg is the .proto's `package` line, service its `service` name. */
-function createClient(api: grpc.GrpcObject, pkg: string, service: string, address: string): GrpcClient {
-  const Client = (api[pkg] as grpc.GrpcObject)[service] as grpc.ServiceClientConstructor;
-  return new Client(address, grpc.credentials.createInsecure());
+  return grpc.loadPackageDefinition(definition) as unknown as Api;
 }

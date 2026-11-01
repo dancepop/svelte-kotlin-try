@@ -131,20 +131,20 @@ svelte-kotlin-try/
 
 ## 5. Gateway (`gateway/`)
 
-- **Stack:** Apollo Server 5 + `@as-integrations/express5`, Express 5, `graphql` **16** (Apollo Server 5 doesn't support 17 yet), `@grpc/grpc-js` + `@grpc/proto-loader`, TypeScript, Vitest.
-- `proto-loader` reads the `.proto` files at runtime from the backend proto modules, so there's no gRPC code-generation step.
+- **Stack:** Apollo Server 5 + `@as-integrations/express5`, Express 5, `graphql` **16** (Apollo Server 5 doesn't support 17 yet), `@grpc/grpc-js` + `@grpc/proto-loader`, TypeScript.
+- `proto-loader` reads the `.proto` files at runtime from the backend proto modules.
+- **Generated types:** `npm run codegen` runs before `dev`, `build` and `typecheck`. `proto-loader-gen-types` writes the gRPC clients' and messages' types to `src/grpc/generated`, and `graphql-codegen` (`codegen.ts`) writes the resolvers' types to `src/graphql/generated`. Both folders are gitignored.
 - **Files:**
   - `config.ts`: env vars;
-  - `grpc/clients.ts`: loads protos and creates clients;
-  - `grpc/types.ts`: the gRPC messages' TypeScript types;
-  - `schema.ts` + `resolvers.ts`: the GraphQL API;
-  - `mappers.ts`: gRPC responses → GraphQL types;
-  - `loaders.ts`: batches credit lookups;
-  - `errors.ts`: gRPC errors → GraphQL errors;
-  - `upload.ts`: forwards an upload to media-app;
-  - `media-route.ts`: `GET /media/*`;
-  - `app.ts`: Express + Apollo + `/healthz`;
-  - `index.ts`: starts the server.
+  - `index.ts`: starts the server;
+  - `app.ts`: Express + Apollo, and loads `graphql/schema.graphql`;
+  - `graphql/resolvers/`: one file each for movies, people and credits, merged in `index.ts`;
+  - `graphql/mappers.ts`: gRPC responses → GraphQL types;
+  - `graphql/loaders.ts` + `context.ts`: batches credit lookups, per request;
+  - `grpc/clients.ts`: loads protos, creates clients and makes typed one-off calls (`unary`);
+  - `grpc/errors.ts`: gRPC errors → GraphQL errors;
+  - `media/upload.ts`: forwards an upload to media-app;
+  - `media/route.ts`: `GET /media/*`.
 
 ---
 
@@ -155,7 +155,7 @@ svelte-kotlin-try/
   - config lives in `vite.config.ts`;
   - `$lib` is `#lib` (Node subpath imports), and imports include the extension: `#lib/api/graphql.ts`;
   - env vars are declared in `src/env.ts` (`defineEnvVars`) and imported from `$app/env/public`. `GRAPHQL_URL` is read at server start.
-- **Tests:** Vitest unit tests in Node, plus component tests in headless Chromium via Playwright (run `npx playwright install chromium` once).
+- **Tests:** Vitest unit tests in Node.
 - **GraphQL calls** use a small `fetch` helper. Uploads use `XMLHttpRequest`, to get `upload.onprogress` events.
 
 ---

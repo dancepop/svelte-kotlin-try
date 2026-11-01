@@ -99,12 +99,10 @@ frontend/src
 │   │   ├── people.ts              people operations
 │   │   ├── upload.ts              the artwork upload, with progress
 │   │   └── types.ts               Movie, Person, MovieInput, …
-│   ├── artwork-file.ts            the size and extension check
 │   ├── list-url.ts                reads and builds a list page's search and page number
-│   ├── search.ts                  splits the search box text into filters
 │   └── components
 │       ├── Artwork.svelte         a movie's image, or a placeholder
-│       ├── ArtworkUpload.svelte   file input, progress bar, upload errors
+│       ├── ArtworkUpload.svelte   file input, size and extension check, progress bar, upload errors
 │       ├── CreditList.svelte      one credit type's people, add and remove
 │       ├── ErrorMessage.svelte    an error with a Retry button
 │       ├── Initials.svelte        a name's initials on a colour worked out from the name
@@ -118,7 +116,7 @@ frontend/src
 └── routes
     ├── +layout.svelte             navigation and page width
     ├── +layout.ts                 ssr = false
-    ├── +page.svelte               /
+    ├── +page.svelte               /, and splits the search box text into filters
     ├── movies/new/+page.svelte
     ├── movies/[id]/+page.svelte
     ├── people/+page.svelte
@@ -158,7 +156,7 @@ const movies = new Loader(() =>
 | **Creating, updating** | Button disabled, reading "Saving…" | Banner above the form |
 | **Deleting** | Native `confirm()`, then button disabled, reading "Deleting…". For a person, the confirmation says they'll be removed from their movies | Banner on the page |
 | **Uploading artwork** | Progress bar with a percentage; "Finishing…" at 100% until the response arrives | Message under the file input |
-| **Adding, removing credits** | That row's button disabled | Message beside the list |
+| **Adding, removing credits** | That row's button disabled, showing a spinner ("Adding…" when adding) | Message beside the list |
 
 Empty results show "No movies found" or "No people found".
 
@@ -166,7 +164,7 @@ Empty results show "No movies found" or "No people found".
 
 ## 6. Errors
 
-`graphqlRequest` throws a `GraphQLRequestError`. Its message joins every error's message, and it carries the first error's `code`. Forms show the message in a banner.
+`graphqlRequest` throws an `Error` whose message joins every error's message. Forms show the message in a banner.
 
 | Gateway code | What the user sees |
 |---|---|
@@ -187,7 +185,7 @@ Empty results show "No movies found" or "No people found".
 
 ## 8. Search box
 
-`parseSearch` in `lib/search.ts` applies the syntax from backend-design §3.7:
+`parseSearch` in `routes/+page.svelte` applies the syntax from backend-design §3.7:
 
 | Input | `search` | `castName` | `creatorName` |
 |---|---|---|---|
@@ -205,7 +203,7 @@ A person without a bio shows "No bio", on both the list and their page.
 
 ## 9. Artwork upload
 
-1. `checkArtworkFile` in `lib/artwork-file.ts` rejects anything over 5 MB or without a `.jpg`, `.jpeg` or `.png` extension. The input also has `accept=".jpg,.jpeg,.png"`.
+1. `checkArtworkFile` in `ArtworkUpload.svelte` rejects anything over 5 MB or without a `.jpg`, `.jpeg` or `.png` extension. The input also has `accept=".jpg,.jpeg,.png"`.
 2. `uploadArtwork` in `lib/api/upload.ts` sends a [GraphQL multipart request](https://github.com/jaydenseric/graphql-multipart-request-spec) with `XMLHttpRequest`, because `fetch` doesn't report upload progress. It needs the `apollo-require-preflight` header.
 3. The response goes through the same error handling as `graphqlRequest`.
 

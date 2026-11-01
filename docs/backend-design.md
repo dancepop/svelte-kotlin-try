@@ -66,7 +66,7 @@ com.backend.movie
     ├── MovieService.kt
     ├── PersonService.kt
     ├── CreditService.kt
-    └── Search.kt                   search patterns and page offsets
+    └── SearchPattern.kt            search patterns and page offsets
 ```
 
 - **Each layer calls only the one below.** The controller is the only code that sees movie-proto classes; `MediaApi` is the only code that sees media-proto ones. Services and their tests work with plain Kotlin types, and tests mock `MediaApi` and the repositories.
@@ -115,7 +115,7 @@ media-app has no database; its only state is the files. As in movie-app, `MovieA
 
 Files are put in place before a row points at them, and removed only after no row does. The worst a failure can leave is a file nobody points at.
 
-Concurrent edits aren't guarded: when two people edit the same row, the last save wins.
+When two people edit the same movie or person, `@Version` makes the second save fail with `ABORTED`, so it can't overwrite the first (§6).
 
 ### 3.1 Create a movie
 
@@ -413,7 +413,7 @@ Apollo's CSRF protection requires the browser to send an `apollo-require-preflig
 
 ### Deadlines
 
-Every gRPC call has a deadline: 5 s for normal calls; `UploadFile` and `ReadFile` get 5 minutes, since they last as long as the transfer. Before either one starts, the gateway waits up to 5 s for a connection, so a service that's down fails quickly. Calls between movie-app and media-app use 5 s.
+Every gRPC call has a deadline: 5 s for normal calls; `UploadFile` and `ReadFile` get 5 minutes, since they last as long as the transfer. Calls between movie-app and media-app use 5 s.
 
 ---
 
@@ -462,7 +462,6 @@ The test plan is in [unit-test-plan.md](unit-test-plan.md).
 |---|---|---|
 | Upload straight to S3 with a presigned URL, serve through a CDN | Stream through the gateway to a local folder | No extra infrastructure to run. `artwork_key` becomes an S3 key, so the database doesn't change. |
 | Make file clean-up reliable with an outbox table that retries deletes | Delete files best-effort after the commit and accept rare orphans | Orphans are harmless: nothing points at them. |
-| Reject conflicting edits with a version column | Let the last save win | The spec has no concurrent-editing requirement. |
 | Page by keyset (`WHERE id > ?`) | Page by offset | Offsets get slow only on deep pages of large tables, and they give page numbers. |
 | Search with OpenSearch, cast names embedded in each movie document | Use Postgres trigram indexes | Fast enough at this size, and nothing to keep in sync. |
 | Add auth and roles | Have no users | The spec has no users. |

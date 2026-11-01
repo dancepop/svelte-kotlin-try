@@ -18,21 +18,13 @@ services:
       - postgres-data:/var/lib/postgresql
       # Runs once on an empty volume: creates the movie role, schema and pg_trgm.
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      # -h localhost: during the init scripts Postgres only listens on its socket, so this stays
-      # unhealthy until init has finished and the real server is up.
-      test: ["CMD", "pg_isready", "-h", "localhost", "-U", "postgres", "-d", "app"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
 
   # Optional sample data, only started with: docker compose --profile seed up
   seed:
     image: postgres:18
     profiles: [seed]
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # seed.sh retries until movie-app has created the tables, so Postgres can still be starting.
+    depends_on: [postgres]
     environment:
       PGHOST: postgres
       PGDATABASE: app
